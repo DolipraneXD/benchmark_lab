@@ -242,9 +242,13 @@ _reg(
         ("extras",),
         "mimo_tool",
         "Toolathlon",
-        adapter=None,
+        adapter="benchlab.adapters.toolathlon:ToolathlonAdapter",
+        n_tasks_default=108,
+        tokens_in_per_task=400000,
+        tokens_out_per_task=20000,
+        needs_docker=True,
         only_models=("mimo",),
-        notes="build order step 9",
+        notes="official containerized runner; host must be set up per the Toolathlon README (apps, tokens, Docker)",
     )
 )
 _reg(
@@ -255,9 +259,13 @@ _reg(
         ("extras",),
         "mimo_osw",
         "OSWorld",
-        adapter=None,
+        adapter="benchlab.adapters.osworld:OSWorldAdapter",
+        n_tasks_default=369,
+        tokens_in_per_task=40000,
+        tokens_out_per_task=4000,
+        needs_docker=True,
         only_models=("mimo",),
-        notes="optional, needs VMs",
+        notes="needs VMs (docker+KVM / aws) and a vision model; harness-fixed sampling",
     )
 )
 _reg(
@@ -307,9 +315,12 @@ _reg(
         ("extras",),
         "ds_auto",
         "AutomationBench",
-        adapter=None,
+        adapter="benchlab.adapters.automationbench:AutomationBenchAdapter",
+        n_tasks_default=600,
+        tokens_in_per_task=60000,
+        tokens_out_per_task=3000,
         only_models=("dsflash",),
-        notes="verify repo is public first",
+        notes="public 600-task set (not the held-out leaderboard set); add ds_auto to another model's extras to run it there too",
     )
 )
 _reg(

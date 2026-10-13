@@ -362,7 +362,10 @@ def _srv_match_entry(cfg: BenchConfig, col: Collected, m: ModelSpec) -> dict[str
 
 
 def _per_solved(col: Collected, m: ModelSpec) -> tuple[dict[str, str], dict[str, str]]:
-    es = [col.get(m.id, b) for b in CORE_SCORE_BENCHES]
+    """Cost / wall seconds per solved task: on AutomationBench when that run exists (the
+    DeepSeek extra asks for it there), else over the core benches."""
+    ab = col.get(m.id, "ds_auto")
+    es = [ab] if ab and ab.solved is not None else [col.get(m.id, b) for b in CORE_SCORE_BENCHES]
     es = [e for e in es if e and e.solved is not None]
     solved = sum(e.solved for e in es)
     benches = [e.bench for e in es]

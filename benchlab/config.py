@@ -177,6 +177,16 @@ class Settings(BaseModel):
     serving_prompts_file: str | None = None  # JSONL {"prompt": ...} to use instead of synthetic text (same file for every model)
     ttft_prompts: int = 10  # fixed prompt set size for the TTFT probe (all models)
     ttft_repeats: int = 3  # streamed repeats per prompt
+    # stage 9 (optional): AutomationBench, Toolathlon, OSWorld
+    autobench_ref: str = "4a8e1061254004d9dac807054eed33fad7d1ff14"  # zapier/AutomationBench (v1.0.6)
+    autobench_toolset: str = "api"  # api | zapier | limited_zapier (README default: api)
+    autobench_max_steps: int = 50
+    toolathlon_ref: str = "9be8d8fe07a497b18ee61e3f2ae694e9797f39eb"  # hkust-nlp/Toolathlon (Toolathlon-Verified)
+    osworld_ref: str = "b138d348256078fa634fc3b73567a7337c793e6b"  # xlang-ai/OSWorld
+    osworld_provider: str = "docker"  # docker (needs KVM) | aws | vmware | virtualbox ...
+    osworld_max_steps: int = 15
+    osworld_meta: str = "test_all.json"  # 369 tasks; test_nogdrive.json (361) when Google Drive is not configured
+    osworld_client_password: str = "password"  # VM user password for the docker/vmware images
     # report / tracker (stage 8)
     sanity_threshold_pts: float = 3.0  # |ours - published| above this is flagged (gpt_sanity, suspicious list)
     self_hosted_gap_pts: float = 5.0  # self-hosted below its API counterpart by more than this -> hint

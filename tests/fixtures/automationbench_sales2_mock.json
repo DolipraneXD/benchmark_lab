@@ -1,0 +1,151 @@
+{
+ "meta": {
+  "timestamp": "2026-10-13T15:22:05.769203",
+  "model": "mock-model",
+  "toolset": "api",
+  "domains": [
+   "sales"
+  ],
+  "total_tasks": 2,
+  "duration_seconds": 0.14818572998046875,
+  "benchmark_version": "1.0.6",
+  "reasoning_effort": null,
+  "max_steps": 3
+ },
+ "summary": {
+  "avg_score": 0.0,
+  "pass_rate": 0.0,
+  "passed_count": 0,
+  "failed_count": 2,
+  "total_input_tokens": 68,
+  "total_output_tokens": 20,
+  "total_cached_input_tokens": 0,
+  "total_reasoning_tokens": 0,
+  "total_tool_calls": 4,
+  "total_model_time_s": 0.2,
+  "total_tool_time_s": 0.0,
+  "total_cost": null,
+  "cost_formatted": "N/A",
+  "tasks_with_empty_responses": 0,
+  "tasks_with_errors": 0,
+  "tasks_with_zero_output": 0,
+  "tasks_refusal_stopped": 0,
+  "aborted_tasks": []
+ },
+ "tasks": [
+  {
+   "id": 1,
+   "name": "sales.multi_hop_lookup",
+   "score": 0.0,
+   "passed": false,
+   "assertions_total": 3,
+   "assertions_passed": 0,
+   "assertion_results": [
+    {
+     "type": "salesforce_field_equals",
+     "passed": false,
+     "excluded": false
+    },
+    {
+     "type": "gmail_message_sent_to_with_body_contains",
+     "passed": false,
+     "excluded": false
+    },
+    {
+     "type": "gmail_message_sent_to_with_body_contains",
+     "passed": false,
+     "excluded": false
+    }
+   ],
+   "input_tokens": 34,
+   "output_tokens": 10,
+   "cached_input_tokens": 0,
+   "uncached_input_tokens": 34,
+   "reasoning_tokens": 0,
+   "num_tool_calls": 2,
+   "num_model_calls": 3,
+   "model_time_s": 0.091,
+   "tool_time_s": 0.0,
+   "cost": null,
+   "steps": 3,
+   "messages": [],
+   "end_state": null,
+   "finish_reasons": [
+    "tool_calls",
+    "tool_calls"
+   ],
+   "stop_reasons": [
+    "tool_calls",
+    "tool_calls",
+    "tool_calls"
+   ],
+   "died_on_refusal": false
+  },
+  {
+   "id": 2,
+   "name": "sales.negative_selection",
+   "score": 0.0,
+   "passed": false,
+   "assertions_total": 7,
+   "assertions_passed": 0,
+   "assertion_results": [
+    {
+     "type": "salesforce_campaign_member_exists",
+     "passed": false,
+     "excluded": false
+    },
+    {
+     "type": "salesforce_campaign_member_exists",
+     "passed": false,
+     "excluded": false
+    },
+    {
+     "type": "salesforce_campaign_member_exists",
+     "passed": false,
+     "excluded": false
+    }
+   ],
+   "input_tokens": 34,
+   "output_tokens": 10,
+   "cached_input_tokens": 0,
+   "uncached_input_tokens": 34,
+   "reasoning_tokens": 0,
+   "num_tool_calls": 2,
+   "num_model_calls": 3,
+   "model_time_s": 0.099,
+   "tool_time_s": 0.0,
+   "cost": null,
+   "steps": 3,
+   "messages": [],
+   "end_state": null,
+   "finish_reasons": [
+    "tool_calls",
+    "tool_calls"
+   ],
+   "stop_reasons": [
+    "tool_calls",
+    "tool_calls",
+    "tool_calls"
+   ],
+   "died_on_refusal": false
+  }
+ ],
+ "usage_by_task": [
+  {
+   "task_id": 1,
+   "task_name": "sales.multi_hop_lookup",
+   "input_tokens": 34,
+   "output_tokens": 10,
+   "total_tokens": 44,
+   "cost": null
+  },
+  {
+   "task_id": 2,
+   "task_name": "sales.negative_selection",
+   "input_tokens": 34,
+   "output_tokens": 10,
+   "total_tokens": 44,
+   "cost": null
+  }
+ ]
+}

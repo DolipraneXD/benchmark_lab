@@ -17,7 +17,7 @@ Status by build stage:
 | 6 | Retrieval pipeline (MTEB, BEIR, own data) | **done** (own-data path proved end to end with mteb's evaluator; HF datasets not reachable in the build sandbox) |
 | 7 | Serving benchmark (guidellm / `vllm bench serve`) + TTFT probe | **done** (both proved end to end against a mock endpoint; GPU figures come from `nvidia-smi` on the serving box) |
 | 8 | `benchlab report` → `report.html`, `results/tracker.json` | **done** |
-| 9 | Optional: Toolathlon, AutomationBench, OSWorld | planned |
+| 9 | Optional: AutomationBench, Toolathlon, OSWorld | **done** (AutomationBench proved end to end; Toolathlon and OSWorld wrap the official runners but need a host you set up: app stack + accounts, or KVM/VMs) |
 
 ## Setup
 
@@ -400,6 +400,66 @@ score; a self-hosted model more than `self_hosted_gap_pts` (5) below its API
 counterpart, or 20+ points below the baseline on a tool-calling bench (hint:
 chat template, `--tool-call-parser`, quantization).
 
+## Stage 9 (optional): AutomationBench, Toolathlon, OSWorld
+
+All three wrap the official harness, pinned by commit in `settings`; none of them
+re-implements scoring. Each is an extra (`mimo_tool`, `mimo_osw`, `ds_auto`), so
+add the key to a model's `extras:` to run it on another model.
+
+### AutomationBench (`ds_auto`) - verified
+
+[zapier/AutomationBench](https://github.com/zapier/AutomationBench) is public
+(MIT, white paper arXiv 2604.18934); the repo ships the **public** 600-task set
+(6 domains × 100) plus a 200-task `simple` warm-up domain that is not scored.
+The official leaderboard uses a held-out private set, so local scores agree
+directionally only (the note says so). `uv sync` into
+`harnesses/automationbench/repo` (Python 3.13), then `auto-bench --model <id>
+--base-url <proxy> --api-key-var BENCHLAB_PROXY_KEY --domains sales,...,hr
+--max-steps 50 --max-concurrent <max_concurrency> --toolset api --export-json`.
+Score = strict pass rate (every assertion satisfied) from the export; partial
+credit, tool calls and steps per task, per-domain pass rates, aborted / errored
+tasks are reported alongside. Cost comes from the proxy usage log. `--subset
+sales,hr` restricts domains; `--smoke` = 3 sales tasks. Verified end to end
+through the proxy against the mock (`tests/test_stage9_adapters.py`). For
+`dsflash`, `ds_cps` / `ds_lps` in the report use this run when it exists.
+
+### Toolathlon-Verified (`mimo_tool`) - official runner, host setup is yours
+
+[hkust-nlp/Toolathlon](https://github.com/hkust-nlp/Toolathlon) (108 tasks, 32
+apps, 604 MCP tools) needs, per its README: Docker/Podman and the task image,
+`global_preparation/deploy_containers.sh` (local app stack), Node 22, and
+accounts/tokens for the external services in `configs/token_key_session.py`
+(`global_preparation/how2register_accounts.md`). BenchLab clones the pinned
+commit into `harnesses/toolathlon/repo` and refuses to run until
+`bash global_preparation/install_env_minimal.sh false` and
+`bash global_preparation/check_installation_containerized.sh` have been run there
+and you `touch .benchlab_setup_verified` in the repo. The run is the official
+`scripts/run_parallel.sh <id> <dump> unified <workers>` with
+`TOOLATHLON_OPENAI_BASE_URL/_API_KEY` = BenchLab's proxy; score = the harness'
+`eval_stats.json` success rate; timeouts / run failures / preprocess failures
+are reported separately and count as failed. The harness fixes max_tokens 65536,
+50 turns, 5400 s per task and provider-default sampling: recorded as a deviation.
+The authors' public evaluation service is **not** used because it would send your
+model API key to a third-party server. Not exercised here (no Docker in the build
+sandbox): command building and parsing are tested on a synthetic `eval_stats.json`.
+
+### OSWorld-Verified (`mimo_osw`) - needs VMs
+
+[xlang-ai/OSWorld](https://github.com/xlang-ai/OSWorld), 369 tasks
+(`test_all.json`; `settings.osworld_meta: test_nogdrive.json` = 361 when Google
+Drive is not configured, which must be reported). The docker provider needs
+KVM (`/dev/kvm`); `prepare()` refuses otherwise. Official
+`scripts/python/run_multienv.py --provider_name docker --observation_type
+screenshot --max_steps 15 --num_envs <max_concurrency>`, results read exactly as
+`show_result.py` does (`result.txt` per task; re-running resumes unfinished
+tasks). The baseline `PromptAgent` dispatches on the model-name prefix and only
+the `gpt*` branch speaks plain OpenAI chat at `OPENAI_BASE_URL`, so BenchLab
+registers the alias `gpt-benchlab-<id>` on the per-run proxy and passes that
+name; the note records it. The model must accept screenshots. Harness-fixed
+temperature 1.0 / top_p 0.9 / max_tokens 1500 are recorded as deviations.
+Not exercised here (no KVM): command building and result parsing are tested on a
+synthetic result tree.
+
 ## Commands
 
 ```bash
@@ -451,6 +511,9 @@ short prompts with tool schemas); BFCL `multi_turn` adds roughly as much again
 | Aider Polyglot, LiveCodeBench | Docker |
 | RULER | long-context endpoint (up to 128k) |
 | Retrieval (MTEB / BEIR / own) | embedding + rerank endpoints or a GPU for sentence-transformers |
+| AutomationBench | nothing beyond API access (simulated SaaS tools run in-process; Python 3.13 via uv) |
+| Toolathlon | Docker/Podman, the Toolathlon task image, its locally deployed apps (poste.io, Canvas, k8s, ...), Node 22, real accounts/tokens for the external services |
+| OSWorld-Verified | VMs: Docker + KVM on the host (or AWS/VMware per its README), tens of GB for the Ubuntu image, a model that accepts screenshots |
 | Serving | guidellm (default) or `vllm bench serve` from any box that can reach the self-hosted endpoint; `nvidia-smi` on the serving box (local or over ssh) |
 
 Details per benchmark are added with each stage.

@@ -26,8 +26,8 @@ def test_run_dry_run_and_not_integrated(models_yaml):
     assert r.exit_code == 0, r.output
     assert "gpqa" in r.output and "bfcl" in r.output and "estimated total" in r.output
     r = runner.invoke(app, ["run", "-m", "all", "--bench", "mimo_tool", "-c", str(models_yaml)])
-    assert r.exit_code == 0, r.output
-    assert "not integrated yet" in r.output
+    assert r.exit_code == 1, r.output  # every bench has an adapter now; Toolathlon refuses without Docker
+    assert "harness not ready" in r.output
     r = runner.invoke(app, ["run", "-m", "mock", "-c", str(models_yaml)])
     assert r.exit_code == 2  # no selector
 

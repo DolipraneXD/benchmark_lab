@@ -249,7 +249,7 @@ def test_tracker_and_derived_keys(models_yaml, tmp_path):
     )
     # per solved: solved = 100*0.5 + 50*0.2 = 60; cost 2.5 -> 0.0417; wall 6000 -> 100.0
     assert t["dsflash__ds_cps"]["v"] == "0.0417" and t["dsflash__ds_lps"]["v"] == "100.0"
-    assert t["dsflash__ds_auto"]["v"] == "n/a" and "not integrated" in t["dsflash__ds_auto"]["note"]
+    assert "dsflash__ds_auto" not in t  # integrated in stage 9: no placeholder, no run yet
     assert "mimo__mimo_osw" not in t  # placeholders only for models in models.yaml
     assert t["step5__srv_quant"]["v"] == "fp8" and t["claude__ttft"]["v"] == "0.50"
     assert list(t) == sorted(t)
