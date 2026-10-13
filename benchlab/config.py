@@ -113,6 +113,10 @@ class Settings(BaseModel):
     tau2_ref: str = "v1.0.1"  # git tag/commit of sierra-research/tau2-bench to pin
     tau2_tasks_per_domain: int = 20  # fixed seeded subset of the `base` split per domain
     tau2_max_steps: int = 200  # tau2 default
+    harbor_subset_size: int = 50  # fixed seeded subset for Terminal-Bench / SWE-bench
+    tb_dataset: str = "terminal-bench@2.0"  # harbor registry name@version
+    swe_dataset: str = "swebench-verified@1.0"
+    tb21_dataset: str = "terminal-bench@2.1"  # Laguna extra; must exist in the registry
     runs_dir: str = "runs"
     results_dir: str = "results"
 

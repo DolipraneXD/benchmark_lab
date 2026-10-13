@@ -12,7 +12,7 @@ Status by build stage:
 | 1 | Skeleton, `models.yaml`, LiteLLM layer, `benchlab check`, cost/latency logging | **done** |
 | 2 | Inspect-based benches: GPQA Diamond, BFCL, GAIA/BrowseComp | **done** (proved end to end on BFCL; GPQA/GAIA need network/Docker not available in the build sandbox) |
 | 3 | τ²-bench (airline, retail, telecom) | **done** (proved end to end on airline against a mock endpoint) |
-| 4 | Harbor: Terminal-Bench, SWE-bench (Docker) | planned |
+| 4 | Harbor: Terminal-Bench 2.0, SWE-bench Verified (Docker) | **done** (no Docker in the build sandbox: verified by command/parse tests; run `--smoke` on a Docker host first) |
 | 5 | Aider Polyglot, LiveCodeBench, RULER | planned |
 | 6 | Retrieval pipeline (MTEB, BEIR, own data) | planned |
 | 7 | Serving benchmark (`vllm bench serve`) + TTFT probe | planned |
@@ -194,6 +194,46 @@ simulation). Rough estimate for Claude Sonnet 5.5: ~$0.15 per simulation ⇒ 3
 domains × 20 tasks × 3 trials ≈ $25-30 for the agent, plus a similar amount for
 the Claude user simulator *per evaluated model*.
 
+## Stage 4: Terminal-Bench 2.0 and SWE-bench Verified via Harbor
+
+Harness: [Harbor](https://github.com/laude-institute/harbor) pinned to **0.24.0**
+in `harnesses/harbor/.venv` - the official harness for Terminal-Bench 2.0, with
+SWE-bench Verified (and Aider Polyglot, LiveCodeBench, …) as registry datasets.
+Bench keys `tb` and `swe` (`--stage 3`); `lag_tb21` for the Laguna extra.
+
+* **Datasets** come from Harbor's registry (`registry.json` in the harbor repo):
+  `terminal-bench@2.0` (89 tasks, git `laude-institute/terminal-bench-2`) and
+  `swebench-verified@1.0` (500 tasks). `settings.tb_dataset` / `swe_dataset`
+  pin the `name@version`; the dataset git commit is recorded in `config.json`.
+  There is **no `terminal-bench@2.1` in the registry today**; `lag_tb21` will
+  say so in `prepare()` until one appears (or point `tb21_dataset` elsewhere).
+* **Agent**: Harbor's reference agent `terminus-2` for every model (same
+  prompts/tools), model `openai/<id>` through the per-run proxy
+  (`--ak api_base=…`), `temperature` from the model's params when it has one.
+  `max_tokens` is deliberately *not* capped for these agentic tasks (recorded
+  in the note). One attempt per task (`-k 1`).
+* **Fixed 50-task subsets** (`settings.harbor_subset_size`), drawn once with
+  seed 20261013 and committed: `subsets/tb_terminal-bench_2.0_50.json`,
+  `subsets/swe_swebench-verified_1.0_50.json`. Every model runs the same ids
+  (`-i <task>` filters). `--subset all` = whole dataset.
+* **Scoring**: each task's own verifier (the dataset's tests) writes
+  `verifier_result.rewards` in `<job>/<trial>/result.json`; BenchLab only
+  aggregates. Primary metric `resolved` = solved / all trials in the subset
+  (**an errored trial counts as unsolved**, which is how "% tasks solved" is
+  reported); `resolved_excl_errors`, timeouts / API errors / environment
+  errors are reported separately with a warning above 2%.
+* **Resume**: a run whose `raw/jobs/<bench>/config.json` exists is continued
+  with `harbor job resume -p …` (completed trials are kept).
+* **Smoke**: `--smoke` = the first 2 subset tasks.
+
+Hardware: Docker with ~4 CPU / 16 GB RAM per concurrent trial and tens of GB
+for images; set the model's `max_concurrency` accordingly (it becomes
+`-n`). Harbor refuses to start - even `--dry-run` - without a Docker daemon.
+
+Cost (Claude Sonnet 5.5, rough): Terminal-Bench tasks run long agent loops,
+~$1-3 per task ⇒ ~$50-150 for the 50-task subset; SWE-bench Verified is
+similar or higher. Open-weight APIs: a fraction of that. Use `--budget-usd`.
+
 ## Commands
 
 ```bash
@@ -217,7 +257,7 @@ every model that has them; `--suite` and `--bench` intersect with it.
 |---|---|---|
 | 1 | `benchlab run --model all --stage 1` | GPQA Diamond + BFCL (cheap; catches broken setups) |
 | 2 | `benchlab run --model all --stage 2` | τ²-bench airline/retail/telecom, 20 tasks/domain × 3 trials (trials default to 3 for τ²) |
-| 3 | `benchlab run --model all --stage 3` | Terminal-Bench then SWE-bench Verified, fixed 50-task subset (seeded once, ids saved and reused) |
+| 3 | `benchlab run --model all --stage 3` | Terminal-Bench 2.0 then SWE-bench Verified, fixed 50-task subsets (committed under `subsets/`) |
 | 4 | `benchlab run --model <ids> --stage 4` | full runs / extras, only for named models |
 
 Always run `benchlab check --model all` first, and `--smoke` (2–3 tasks per
