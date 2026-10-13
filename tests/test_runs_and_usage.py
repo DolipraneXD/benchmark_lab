@@ -110,7 +110,7 @@ def test_registry_selection(models_yaml):
     assert not registry.applies_to(registry.get("gpqa"), cfg.get("qemb"))
     # not-yet-built adapters resolve to None instead of crashing
     assert registry.load_adapter(registry.get("gpqa")).__name__ == "GPQAAdapter"
-    assert registry.load_adapter(registry.get("tb")) is None  # planned, not built
+    assert registry.load_adapter(registry.get("lcb")) is None  # planned, not built
     assert registry.load_adapter(registry.get("mimo_osw")) is None
 
 

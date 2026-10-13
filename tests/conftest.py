@@ -212,6 +212,7 @@ models:
     price_out_per_mtok: 2.0
     max_concurrency: 4
     extra_params: {{temperature: 0.0}}
+    suites: [core, coder]
     extras: [glm_aider]
   - id: badtools
     name: Mock malformed tools

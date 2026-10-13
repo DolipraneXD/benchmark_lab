@@ -13,7 +13,7 @@ def test_load_and_select(models_yaml):
     assert all(m.kind == "chat" for m in cfg.select("all"))
     assert "qemb" not in [m.id for m in cfg.select("all")]
     assert cfg.get("qemb").suites == ["retrieval"]
-    assert cfg.get("mock").suites == ["core"]
+    assert cfg.get("mock").suites == ["core", "coder"]
 
 
 def test_litellm_mapping(models_yaml):
