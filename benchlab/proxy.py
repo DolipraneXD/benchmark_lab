@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import os
 import shutil
+import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
+import httpx
 import yaml
 
 from benchlab.config import BenchConfig, ModelSpec
@@ -106,6 +109,92 @@ def proxy_env(cfg: BenchConfig) -> dict[str, str]:
         "OPENAI_API_BASE": proxy_base_url(cfg),
         "OPENAI_API_KEY": os.environ.get("LITELLM_MASTER_KEY", "sk-benchlab-local"),
     }
+
+
+class ProxyProcess:
+    """A LiteLLM proxy owned by one run.
+
+    Started on a free port with ``BENCHLAB_USAGE_LOG`` pointing at the run's
+    ``usage.jsonl``, so every harness request is attributed to that run without
+    sharing state with a long-lived proxy. Use as a context manager.
+    """
+
+    def __init__(self, cfg: BenchConfig, work_dir: Path, usage_log: Path, port: int | None = None):
+        self.cfg = cfg
+        self.work_dir = Path(work_dir)
+        self.usage_log = Path(usage_log)
+        self.port = port or _free_port()
+        self.host = cfg.settings.litellm_proxy_host
+        self.proc: subprocess.Popen | None = None
+        self.log_path = self.work_dir / "proxy.log"
+        self.master_key = os.environ.get("LITELLM_MASTER_KEY") or "sk-benchlab-local"
+
+    @property
+    def base_url(self) -> str:
+        return f"http://{self.host}:{self.port}/v1"
+
+    def env_for_harness(self) -> dict[str, str]:
+        return {
+            "OPENAI_BASE_URL": self.base_url,
+            "OPENAI_API_BASE": self.base_url,
+            "OPENAI_API_KEY": self.master_key,
+        }
+
+    def start(self, timeout_s: float = 120.0) -> ProxyProcess:
+        exe = shutil.which("litellm")
+        if exe is None:
+            raise RuntimeError("litellm proxy CLI not found; run `uv sync`")
+        self.work_dir.mkdir(parents=True, exist_ok=True)
+        cfg_path = write_proxy_config(self.cfg, self.work_dir / "litellm_config.yaml")
+        env = dict(os.environ)
+        env["BENCHLAB_USAGE_LOG"] = str(self.usage_log)
+        env["LITELLM_MASTER_KEY"] = self.master_key
+        env.setdefault("LITELLM_LOG", "ERROR")
+        self.proc = subprocess.Popen(
+            [exe, "--config", str(cfg_path), "--host", self.host, "--port", str(self.port)],
+            stdout=open(self.log_path, "ab"),
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if self.proc.poll() is not None:
+                raise RuntimeError(
+                    f"proxy exited early (rc={self.proc.returncode}); see {self.log_path}"
+                )
+            if self.healthy():
+                return self
+            time.sleep(0.5)
+        self.stop()
+        raise RuntimeError(f"proxy did not become healthy in {timeout_s}s; see {self.log_path}")
+
+    def healthy(self) -> bool:
+        try:
+            r = httpx.get(f"http://{self.host}:{self.port}/health/liveliness", timeout=2.0)
+            return r.status_code == 200
+        except httpx.HTTPError:
+            return False
+
+    def stop(self) -> None:
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+        self.proc = None
+
+    def __enter__(self) -> ProxyProcess:
+        return self.start()
+
+    def __exit__(self, *exc) -> None:
+        self.stop()
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def launch_proxy(

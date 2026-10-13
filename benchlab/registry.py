@@ -46,7 +46,7 @@ _reg(
         ("core",),
         "gpqa",
         "inspect_evals/gpqa_diamond",
-        adapter="benchlab.adapters.inspect_evals:GPQAAdapter",
+        adapter="benchlab.adapters.inspect_bench:GPQAAdapter",
         n_tasks_default=198,
         tokens_in_per_task=700,
         tokens_out_per_task=1500,
@@ -60,8 +60,8 @@ _reg(
         ("core",),
         "bfcl",
         "inspect_evals/bfcl",
-        adapter="benchlab.adapters.inspect_evals:BFCLAdapter",
-        n_tasks_default=0,
+        adapter="benchlab.adapters.inspect_bench:BFCLAdapter",
+        n_tasks_default=3641,
         tokens_in_per_task=1500,
         tokens_out_per_task=200,
     )
@@ -147,8 +147,8 @@ _reg(
         ("core",),
         "gaia",
         "inspect_evals/gaia",
-        adapter="benchlab.adapters.inspect_evals:GAIAAdapter",
-        n_tasks_default=0,
+        adapter="benchlab.adapters.inspect_bench:GAIAAdapter",
+        n_tasks_default=50,
         tokens_in_per_task=50000,
         tokens_out_per_task=3000,
         needs_docker=True,
@@ -166,6 +166,23 @@ _reg(
         n_tasks_default=10,
         tokens_in_per_task=200,
         tokens_out_per_task=64,
+    )
+)
+
+_reg(
+    BenchInfo(
+        "bcomp",
+        "BrowseComp (subset, alt. to GAIA)",
+        4,
+        (),
+        "gaia",
+        "inspect_evals/browse_comp",
+        adapter="benchlab.adapters.inspect_bench:BrowseCompAdapter",
+        n_tasks_default=100,
+        tokens_in_per_task=80000,
+        tokens_out_per_task=4000,
+        needs_docker=True,
+        notes="run with --bench bcomp; needs TAVILY_API_KEY and Docker",
     )
 )
 

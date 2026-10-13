@@ -38,6 +38,12 @@ def _cfg(path: str | None) -> BenchConfig:
         raise typer.Exit(2) from None
 
 
+def _usd(v) -> str:
+    if v is None:
+        return "-"
+    return f"${v:.4f}" if v < 0.01 else f"${v:.2f}"
+
+
 def _fmt(v, nd=2, suffix=""):
     if v is None:
         return "-"
@@ -369,7 +375,7 @@ def _run_one(cfg, m, b, adapter_cls, trials, subset, smoke, budget_usd, resume) 
     console.print(
         f"[green]{b.key} {m.id}[/green]: {res.primary_metric}={_fmt(res.primary_value, 1)}  "
         f"n={res.n_tasks} trials={res.trials} errors={res.errors.total} "
-        f"cost={'-' if res.cost_usd is None else f'${res.cost_usd:.2f}'}  -> {p}"
+        f"cost={_usd(res.cost_usd)}  -> {p}"
     )
     for w in res.warnings:
         console.print(f"[yellow]warning:[/yellow] {w}")

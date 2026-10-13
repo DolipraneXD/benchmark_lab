@@ -43,11 +43,16 @@ def make_app() -> FastAPI:
         want_no_tools = model == "no-tools"
         tin, tout = 17, 5
         if tools and not want_no_tools:
-            args = (
-                '{"city": "Paris", "unit": "celsius"'
-                if want_malformed
-                else json.dumps({"city": "Paris", "unit": "celsius"})
-            )
+            # call the first offered tool; get_weather gets real args, anything else `{}`
+            first = tools[0]["function"]["name"]
+            if first == "get_weather":
+                args = (
+                    '{"city": "Paris", "unit": "celsius"'
+                    if want_malformed
+                    else json.dumps({"city": "Paris", "unit": "celsius"})
+                )
+            else:
+                args = "{}"
             message = {
                 "role": "assistant",
                 "content": None,
@@ -55,13 +60,19 @@ def make_app() -> FastAPI:
                     {
                         "id": "call_1",
                         "type": "function",
-                        "function": {"name": "get_weather", "arguments": args},
+                        "function": {"name": first, "arguments": args},
                     }
                 ],
             }
             finish = "tool_calls"
         else:
-            text = "pong" if "pong" in json.dumps(body["messages"]) else "1 2 3 4 5 6 7 8 9 10"
+            blob = json.dumps(body["messages"])
+            if "pong" in blob:
+                text = "pong"
+            elif "ANSWER: $LETTER" in blob:
+                text = "Let me think. ANSWER: A"  # multiple-choice evals (GPQA)
+            else:
+                text = "1 2 3 4 5 6 7 8 9 10"
             message = {"role": "assistant", "content": text}
             finish = "stop"
         usage = {"prompt_tokens": tin, "completion_tokens": tout, "total_tokens": tin + tout}

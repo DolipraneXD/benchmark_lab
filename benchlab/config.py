@@ -109,6 +109,7 @@ class Settings(BaseModel):
     request_timeout_s: float = 300
     tau2_user_model: str = "claude"
     tau2_user_model_params: dict[str, Any] = Field(default_factory=dict)
+    grader_model: str | None = None  # LLM grader for model-graded benches (default: baseline)
     runs_dir: str = "runs"
     results_dir: str = "results"
 
@@ -124,8 +125,12 @@ class BenchConfig(BaseModel):
             if m.id in seen:
                 raise ValueError(f"duplicate model id {m.id}")
             seen.add(m.id)
-        for ref in (self.settings.baseline_model, self.settings.tau2_user_model):
-            if ref not in seen:
+        for ref in (
+            self.settings.baseline_model,
+            self.settings.tau2_user_model,
+            self.settings.grader_model,
+        ):
+            if ref is not None and ref not in seen:
                 raise ValueError(f"settings reference unknown model id {ref!r}")
         for m in self.models:
             if m.compare_to and m.compare_to not in seen:

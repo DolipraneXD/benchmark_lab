@@ -10,7 +10,7 @@ Status by build stage:
 | # | Stage | Status |
 |---|-------|--------|
 | 1 | Skeleton, `models.yaml`, LiteLLM layer, `benchlab check`, cost/latency logging | **done** |
-| 2 | Inspect-based benches: GPQA Diamond, BFCL, GAIA/BrowseComp | next |
+| 2 | Inspect-based benches: GPQA Diamond, BFCL, GAIA/BrowseComp | **done** (proved end to end on BFCL; GPQA/GAIA need network/Docker not available in the build sandbox) |
 | 3 | τ²-bench | planned |
 | 4 | Harbor: Terminal-Bench, SWE-bench (Docker) | planned |
 | 5 | Aider Polyglot, LiveCodeBench, RULER | planned |
@@ -26,6 +26,12 @@ uv sync                      # Python 3.11+, installs benchlab + LiteLLM (SDK an
 cp .env.example .env         # put API keys here; .env is git-ignored
 uv run benchlab models --keys   # validate models.yaml and see which keys are set
 ```
+
+Official harnesses are **not** installed into this environment: each one gets
+its own `uv` venv under `harnesses/<name>/.venv`, created on first use by the
+adapter's `prepare()` with exact pins (recorded in `harnesses/<name>/manifest.json`
+and in every run's `config.json`). This is necessary, not cosmetic: e.g.
+`inspect-ai` requires `openai>=3.4` while LiteLLM pins `openai<3`.
 
 Docker is required for everything that executes model-written code
 (Terminal-Bench, SWE-bench, Aider, LiveCodeBench, GAIA). Stage 1 needs no Docker.
@@ -114,6 +120,36 @@ results/results.csv   one row per (model, bench, metric)
   (progress saved) when the spend passes the cap. `--dry-run` prints what
   would run and a rough cost estimate from per-task token profiles.
 
+## Stage 2: Inspect-based benchmarks (GPQA Diamond, BFCL, GAIA, BrowseComp)
+
+Harness: [`inspect_evals`](https://github.com/UKGovernmentBEIS/inspect_evals)
+0.24.0 on `inspect-ai` 0.3.279 (pinned in `benchlab/adapters/inspect_bench.py`).
+Every run starts a per-run LiteLLM proxy and calls
+`inspect eval-set <task> --model openai/<id> --model-base-url <proxy>` with a
+fixed `--log-dir` inside the run folder, which is Inspect's own resumable mode:
+re-running the same command continues an interrupted run. The `.eval` log is
+the raw artifact; `result.json` is parsed from it (metrics come from Inspect's
+scorers, never recomputed).
+
+| Bench | Task | Default subset | Notes |
+|---|---|---|---|
+| `gpqa` | `inspect_evals/gpqa_diamond` | all 198 | task defaults: CoT on, choices shuffled with seed 42; the task's default of **4 epochs** is overridden to `--trials` (1) |
+| `bfcl` | `inspect_evals/bfcl` | `single_turn` = 13 V1/V2 AST + relevance categories, 3,641 samples | `--subset leaderboard` adds the four V3 multi-turn categories (+800, much longer); `--subset multi_turn`; or `--subset simple_python+irrelevance`. Per-category accuracies are in `result.json`; the primary number is Inspect's sample-weighted accuracy, with the leaderboard-style unweighted mean as `accuracy_unweighted_categories`. exec_* (retired upstream), sql and multi_turn_composite are excluded by default |
+| `gaia` | `inspect_evals/gaia` | fixed 50-question subset of the 165 validation questions, seed 20261013, saved to `subsets/gaia_validation_50.json` on first run | needs `HF_TOKEN` with access to the gated `gaia-benchmark/GAIA` dataset and Docker (sandbox). `--subset 165` = full validation |
+| `bcomp` | `inspect_evals/browse_comp` | first 100 | alternative to GAIA, run with `--bench bcomp`; needs `TAVILY_API_KEY` and Docker. The grader is the **fixed** `settings.grader_model` (default: the baseline) through the proxy, never the model under test |
+
+What counts as an error: Inspect runs with `--no-fail-on-error`, so a sample
+that times out or hits an API error is logged with an error instead of
+aborting the run. `result.json` reports the harness accuracy (over scored
+samples) *and* `accuracy_errors_as_wrong`, plus timeouts / API errors /
+malformed tool calls separately; an error rate above 2% raises a warning.
+
+Verified in this build: BFCL end to end (`benchlab run --model <id> --bench bfcl --smoke`)
+against a mock OpenAI endpoint, including resume and parsing. GPQA's dataset
+host (`openaipublic.blob.core.windows.net`) and HuggingFace were not reachable
+from the build sandbox and Docker was not running, so GPQA/GAIA/BrowseComp are
+verified by command-building and parser tests only; run `--smoke` on them first.
+
 ## Commands
 
 ```bash
@@ -147,8 +183,10 @@ bench) before a full stage.
 
 Filled in as each stage lands and real numbers come out of the usage logs.
 Until then `benchlab run --dry-run` gives an estimate from per-task token
-profiles (see `benchlab/registry.py`). Stage 1 for Claude Sonnet 5.5 is
-estimated at ≈$3–4 (GPQA Diamond, 198 questions) plus BFCL.
+profiles (see `benchlab/registry.py`). For Claude Sonnet 5.5 at $2/$10 per
+Mtok: GPQA Diamond ≈ $3–4 (198 q, CoT); BFCL `single_turn` ≈ $15–20 (3,641
+short prompts with tool schemas); BFCL `multi_turn` adds roughly as much again
+(long stateful conversations). Open-weight APIs are typically 5–20× cheaper.
 
 ## Hardware and Docker resources
 
