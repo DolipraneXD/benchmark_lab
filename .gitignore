@@ -1,0 +1,27 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python / uv
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+
+# benchlab outputs
+runs/
+results/
+report.html
+litellm_config.yaml
+
+# vendored harnesses (cloned by `benchlab prepare`)
+harnesses/
+
+# retrieval data is user-supplied
+retrieval/docs/
+retrieval/queries.jsonl

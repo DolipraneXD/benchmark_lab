@@ -1,0 +1,201 @@
+# BenchLab model registry. Edit freely; `benchlab models` validates it.
+#
+# Field reference (per model):
+#   id                 short id, used in run folders, results.csv and tracker keys (<id>__<bench>)
+#   name               display name
+#   provider           openai_compatible | anthropic | bedrock
+#   base_url           required for openai_compatible (…/v1); optional override for anthropic
+#   model              model name sent to the API (for bedrock: the model id / inference profile)
+#   api_key_env        env var holding the key (read from .env). Never put keys here.
+#   kind               chat (default) | embedding | reranker
+#   self_hosted        true -> serving benchmark applies, and the self-hosted hints are shown
+#   price_in_per_mtok  USD per 1M input tokens  (0 = unknown -> cost reported as n/a)
+#   price_out_per_mtok USD per 1M output tokens
+#   max_concurrency    parallel requests the harnesses may use against this model
+#   extra_params       request params for this model. `temperature: null` REMOVES the
+#                      global default (recorded as a per-model exception in config.json).
+#   region             bedrock only (falls back to AWS_REGION_NAME)
+#   extras             extra benchmark keys that apply to this model (beyond its suites)
+#   suites             which suites this model runs: core (default for chat), coder, retrieval
+#   published          published scores {bench_key: percent} used for the "suspicious results" list
+#   notes              free text, copied into every run's config.json
+
+settings:
+  baseline_model: claude            # every delta in the report is vs this id
+  litellm_proxy_port: 4000
+  default_temperature: 0.0
+  default_max_tokens: 4096
+  request_timeout_s: 300
+  tau2_user_model: claude           # FIXED user simulator for τ²-bench, identical for every run
+  tau2_user_model_params: {temperature: null}
+
+models:
+  # ---- baseline -----------------------------------------------------------
+  - id: claude
+    name: Claude Sonnet 5.5
+    provider: anthropic
+    model: claude-sonnet-5-5
+    api_key_env: ANTHROPIC_API_KEY
+    price_in_per_mtok: 2.0
+    price_out_per_mtok: 10.0
+    max_concurrency: 8
+    # Sonnet 5.5 rejects non-default sampling params (temperature) with a 400 and
+    # runs adaptive thinking by default; both are recorded as per-model exceptions.
+    extra_params: {temperature: null}
+    suites: [core, coder]
+
+  # ---- open / closed chat models -------------------------------------------
+  - id: glm
+    name: GLM-5.3
+    provider: openai_compatible
+    base_url: https://open.bigmodel.cn/api/paas/v4   # TODO verify
+    model: glm-5.3
+    api_key_env: GLM_API_KEY
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 8
+    extra_params: {}
+    extras: [glm_aider]
+
+  - id: dsflash
+    name: DeepSeek-V4.1-Flash
+    provider: openai_compatible
+    base_url: https://api.deepseek.com/v1
+    model: deepseek-v4.1-flash                      # TODO verify model name
+    api_key_env: DEEPSEEK_API_KEY
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 8
+    extra_params: {}
+    extras: [ds_auto, ds_cps, ds_lps]
+
+  - id: gptoss
+    name: gpt-oss-120b
+    provider: openai_compatible
+    base_url: http://localhost:8000/v1              # vLLM
+    model: openai/gpt-oss-120b
+    api_key_env: VLLM_API_KEY
+    self_hosted: true
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 16
+    extra_params: {}
+    extras: [gpt_sanity]
+    # Fill from the model card; the sanity check flags |ours - published| > 3 points.
+    published: {}   # e.g. {gpqa: 80.1, tb: 0.0}
+
+  - id: mimo
+    name: MiMo-V2.6-Pro
+    provider: openai_compatible
+    base_url: https://api.xiaomimimo.com/v1         # TODO verify
+    model: mimo-v2.6-pro
+    api_key_env: MIMO_API_KEY
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 8
+    extra_params: {}
+    extras: [mimo_long, mimo_tool, mimo_osw]
+
+  - id: qwen27
+    name: Qwen3.8-27B
+    provider: openai_compatible
+    base_url: http://localhost:8001/v1
+    model: Qwen/Qwen3.8-27B
+    api_key_env: VLLM_API_KEY
+    self_hosted: true
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 16
+    extra_params: {}
+    extras: [q27_lcb]
+
+  - id: ml4
+    name: Mistral Large 4
+    provider: openai_compatible
+    base_url: https://api.mistral.ai/v1
+    model: mistral-large-latest                     # TODO pin exact version
+    api_key_env: MISTRAL_API_KEY
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 8
+    extra_params: {}
+    extras: [ml4_aider]
+
+  - id: laguna
+    name: Laguna S 2.1
+    provider: openai_compatible
+    base_url: http://localhost:8002/v1
+    model: laguna-s-2.1
+    api_key_env: VLLM_API_KEY
+    self_hosted: true
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 16
+    extra_params: {}
+    extras: [lag_tb21, lag_ruler]
+    published: {lag_tb21: 70.2}
+
+  - id: step5
+    name: Step 5 Preview (API)
+    provider: openai_compatible
+    base_url: https://api.stepfun.com/v1
+    model: step-5-preview                           # TODO verify
+    api_key_env: STEP_API_KEY
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 8
+    extra_params: {}
+    extras: [s5_api, s5_tok]
+
+  - id: step5self
+    name: Step 5 Preview (self-hosted weights)
+    tracker_id: step5                               # results land under step5__s5_self
+    provider: openai_compatible
+    base_url: http://localhost:8003/v1
+    model: step-5-preview
+    api_key_env: VLLM_API_KEY
+    self_hosted: true
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 16
+    extra_params: {}
+    extras: [s5_self, s5_tok]
+    compare_to: step5                               # prints the API-vs-self-hosted gap + hints
+
+  # ---- coding specialist ----------------------------------------------------
+  - id: qcoder
+    name: Qwen3-Coder-30B-A3B
+    provider: openai_compatible
+    base_url: http://localhost:8004/v1
+    model: Qwen/Qwen3-Coder-30B-A3B-Instruct
+    api_key_env: VLLM_API_KEY
+    self_hosted: true
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 16
+    extra_params: {}
+    suites: [coder]                                 # no general / agent tests
+
+  # ---- retrieval (separate pipeline; these models don't chat) --------------
+  - id: qemb
+    name: Qwen3-Embedding-4B
+    kind: embedding
+    provider: openai_compatible
+    base_url: http://localhost:8010/v1              # vLLM / TEI /v1/embeddings, or `local:` below
+    model: Qwen/Qwen3-Embedding-4B
+    api_key_env: VLLM_API_KEY
+    self_hosted: true
+    max_concurrency: 16
+    suites: [retrieval]
+    # local alternative (sentence-transformers): set base_url: local and model to the HF id
+
+  - id: qrr
+    name: Qwen3-Reranker-4B
+    kind: reranker
+    provider: openai_compatible
+    base_url: http://localhost:8011/v1              # /v1/rerank (vLLM / TEI), or local
+    model: Qwen/Qwen3-Reranker-4B
+    api_key_env: VLLM_API_KEY
+    self_hosted: true
+    max_concurrency: 16
+    suites: [retrieval]
