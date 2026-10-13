@@ -43,6 +43,7 @@ class ModelSpec(BaseModel):
     published: dict[str, float] = Field(default_factory=dict)
     tracker_id: str | None = None
     compare_to: str | None = None
+    knowledge_cutoff: str | None = None  # YYYY-MM-DD; LiveCodeBench uses problems after it
     notes: str = ""
 
     @field_validator("id")
@@ -117,6 +118,18 @@ class Settings(BaseModel):
     tb_dataset: str = "terminal-bench@2.0"  # harbor registry name@version
     swe_dataset: str = "swebench-verified@1.0"
     tb21_dataset: str = "terminal-bench@2.1"  # Laguna extra; must exist in the registry
+    aider_ref: str = "v0.86.2"  # Aider-AI/aider tag (benchmark harness + Docker image)
+    aider_polyglot_ref: str = (
+        "7e0611e77b54e2dea774cdc0aa00cf9f7ed6144f"  # Aider-AI/polyglot-benchmark
+    )
+    aider_edit_format: str = "diff"  # same edit format for every model (leaderboard default)
+    aider_tries: int = 2  # pass_rate_2 is the leaderboard number
+    aider_docker_network: str = "host"  # how the container reaches the proxy (host on Linux)
+    lcb_ref: str = "28fef95ea8c9f7a547c8329f2cd3d32b92c1fa24"  # LiveCodeBench/LiveCodeBench commit
+    lcb_release_version: str = "release_v6"  # problems May 2023 - Apr 2025
+    lcb_n: int = 10  # LCB official: n=10 samples, temperature 0.2 (pass@1 estimate)
+    lcb_temperature: float = 0.2
+    lcb_default_start_date: str | None = None  # used when a model has no knowledge_cutoff
     runs_dir: str = "runs"
     results_dir: str = "results"
 

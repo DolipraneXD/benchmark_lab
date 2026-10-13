@@ -219,3 +219,99 @@ def repo_commit(repo: Path) -> str | None:
         ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True
     )
     return out.stdout.strip() or None if out.returncode == 0 else None
+
+
+def ensure_repo(
+    name: str, url: str, ref: str, subdir: str = "repo", root: Path | None = None
+) -> Path:
+    """Clone ``url`` at ``ref`` into ``harnesses/<name>/<subdir>`` (no venv). Re-clones
+    when the recorded ref changes. Returns the absolute repo path."""
+    base = harness_root(name, root)
+    repo = base / subdir
+    marker = base / f"{subdir}.ref.json"
+    if repo.exists() and marker.exists():
+        try:
+            have = json.loads(marker.read_text())
+            if have.get("url") == url and have.get("ref") == ref and (repo / ".git").exists():
+                return repo.resolve()
+        except json.JSONDecodeError:
+            pass
+    if repo.exists():
+        shutil.rmtree(repo)
+    base.mkdir(parents=True, exist_ok=True)
+    try:
+        clone = subprocess.run(
+            ["git", "clone", "--quiet", "--depth", "1", "--branch", ref, url, str(repo)],
+            capture_output=True,
+            text=True,
+        )
+        if clone.returncode != 0:  # a commit sha: full clone then checkout
+            subprocess.run(
+                ["git", "clone", "--quiet", url, str(repo)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repo), "checkout", "--quiet", ref],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+    except subprocess.CalledProcessError as e:
+        raise HarnessInstallError(f"failed to clone {url}@{ref}: {e.stderr.strip()[-1500:]}") from e
+    marker.write_text(json.dumps({"url": url, "ref": ref, "commit": repo_commit(repo)}, indent=2))
+    return repo.resolve()
+
+
+def ensure_pip_venv_in_repo(
+    repo: Path, python: str, packages: list[str], editable_no_deps: bool = True
+) -> Path:
+    """``repo/.venv`` with ``packages`` plus the repo installed ``--no-deps -e`` (for
+    harnesses whose declared deps include GPU stacks we do not need). Returns bin dir."""
+    venv = repo / ".venv"
+    manifest = repo.parent / f"{repo.name}.venv.json"
+    want = {"python": python, "packages": sorted(packages), "editable_no_deps": editable_no_deps}
+    if (venv / "bin" / "python").exists() and manifest.exists():
+        try:
+            if json.loads(manifest.read_text()).get("want") == want:
+                return (venv / "bin").resolve()
+        except json.JSONDecodeError:
+            pass
+    uv = _uv()
+    env = dict(os.environ)
+    env.pop("VIRTUAL_ENV", None)
+    try:
+        subprocess.run(
+            [uv, "venv", "--python", python, "--quiet", "--allow-existing", str(venv)],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        py = str(venv / "bin" / "python")
+        subprocess.run(
+            [uv, "pip", "install", "--quiet", "--python", py, *packages],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        edit = ["--no-deps"] if editable_no_deps else []
+        subprocess.run(
+            [uv, "pip", "install", "--quiet", "--python", py, *edit, "-e", str(repo)],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    except subprocess.CalledProcessError as e:
+        raise HarnessInstallError(
+            f"failed to build venv in {repo}: {e.stderr.strip()[-2000:]}"
+        ) from e
+    manifest.write_text(
+        json.dumps(
+            {"want": want, "installed": frozen_versions(venv / "bin")}, indent=2, sort_keys=True
+        )
+    )
+    return (venv / "bin").resolve()

@@ -13,7 +13,7 @@ Status by build stage:
 | 2 | Inspect-based benches: GPQA Diamond, BFCL, GAIA/BrowseComp | **done** (proved end to end on BFCL; GPQA/GAIA need network/Docker not available in the build sandbox) |
 | 3 | τ²-bench (airline, retail, telecom) | **done** (proved end to end on airline against a mock endpoint) |
 | 4 | Harbor: Terminal-Bench 2.0, SWE-bench Verified (Docker) | **done** (no Docker in the build sandbox: verified by command/parse tests; run `--smoke` on a Docker host first) |
-| 5 | Aider Polyglot, LiveCodeBench, RULER | planned |
+| 5 | Aider Polyglot, LiveCodeBench, RULER | **done** for Aider + LiveCodeBench (structural verification: Docker/HF not available in the build sandbox); **RULER skipped** - see below |
 | 6 | Retrieval pipeline (MTEB, BEIR, own data) | planned |
 | 7 | Serving benchmark (`vllm bench serve`) + TTFT probe | planned |
 | 8 | `benchlab report` → `report.html`, `results/tracker.json` | planned |
@@ -233,6 +233,61 @@ for images; set the model's `max_concurrency` accordingly (it becomes
 Cost (Claude Sonnet 5.5, rough): Terminal-Bench tasks run long agent loops,
 ~$1-3 per task ⇒ ~$50-150 for the 50-task subset; SWE-bench Verified is
 similar or higher. Open-weight APIs: a fraction of that. Use `--budget-usd`.
+
+## Stage 5: Aider Polyglot, LiveCodeBench, RULER
+
+### Aider Polyglot (`aider`, `glm_aider`, `ml4_aider`)
+Official harness: [`Aider-AI/aider`](https://github.com/Aider-AI/aider) `benchmark/`
+pinned to tag **v0.86.2** (`settings.aider_ref`), exercises from
+`Aider-AI/polyglot-benchmark` at a pinned commit (`settings.aider_polyglot_ref`).
+`prepare()` clones both under `harnesses/aider/` and builds the
+`benchlab-aider:<ref>` image from the repo's `benchmark/Dockerfile` (Python,
+Go, Rust, Java, Node toolchains). Each run copies the exercises into
+`raw/benchmarks/`, starts the per-run proxy and runs
+`./benchmark/benchmark.py benchlab --model openai/<id> --edit-format diff --threads <max_concurrency> --tries 2 --cont`
+inside the container with `OPENAI_API_BASE` pointing at the proxy
+(`--network=host`; set `settings.aider_docker_network` to `bridge` and a
+non-loopback proxy host on macOS). Scoring is aider's own: after the run
+`benchmark.py --stats` is executed in the container and parsed (`pass_rate_2`,
+the leaderboard number, is the primary metric; `pass_rate_1`,
+`percent_cases_well_formed`, error outputs, malformed responses, syntax errors
+and test timeouts are reported too), cross-checked against the per-exercise
+`.aider.results.json` files. `--cont` makes re-runs resume. `--smoke` =
+`--num-tests 3`. Same edit format (`diff`) for every model, recorded in the note.
+
+### LiveCodeBench (`lcb`, `q27_lcb`)
+Official repo [`LiveCodeBench/LiveCodeBench`](https://github.com/LiveCodeBench/LiveCodeBench)
+pinned to commit `28fef95` (`settings.lcb_ref`), dataset
+`livecodebench/code_generation_lite` **release_v6** (May 2023 - Apr 2025,
+1055 problems; `settings.lcb_release_version`). The model under test is
+registered through the repo's documented extension point (`lm_styles`,
+`LMStyle.OpenAIChat`) at runtime by a wrapper - no harness code is edited -
+and the OpenAI runner is pointed at the proxy with `OPENAI_KEY` /
+`OPENAI_BASE_URL`. Sampling follows LCB's protocol (**n=10, temperature 0.2**,
+`settings.lcb_n` / `lcb_temperature`), a deliberate, recorded deviation from
+the global temperature 0. **Cut-off window:** set `knowledge_cutoff:
+YYYY-MM-DD` on the model in `models.yaml`; it becomes `--start_date`, so only
+problems released after the model's cut-off are used, and the actual
+first/last contest dates are recorded in `result.json` and the note. Without
+a cutoff the whole release is used and the note says so. Scoring is the
+repo's evaluator (`--evaluate`; `pass@1` per problem, per-difficulty, the
+harness summary's pass@k); `--continue_existing_with_eval` resumes. The
+harness venv installs the repo's declared deps **except `vllm`/`torch`**
+(GPU inference stack, never imported on the API path) - a documented install
+deviation, not a code change. The evaluator executes generated code in local
+subprocesses: run it on a box you don't mind that on (or inside a VM).
+
+### RULER - skipped (not cleanly integrable)
+`NVIDIA/RULER` deprecated its original pipeline; the current one
+(`rulerv1-ns` branch) is NeMo-Skills with a cluster config and a model server it
+launches itself (vLLM/SGLang/TRT-LLM, GPU only). The legacy OpenAI client
+hardcodes Azure environment variables and a fixed model/length table, so it
+cannot target an OpenAI-compatible endpoint without modifying the harness.
+`lag_ruler` and `mimo_long` therefore resolve to `benchlab/adapters/ruler.py`,
+which fails `prepare()` with that explanation instead of faking a result.
+Options: run NeMo-Skills on the GPU box serving Laguna/MiMo (official, heavy);
+NeMo-Skills' OpenAI-server mode against the proxy; or accept a RULER port in
+another framework (violates the official-harness rule). Your call.
 
 ## Commands
 
