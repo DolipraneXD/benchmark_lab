@@ -130,6 +130,43 @@ class Settings(BaseModel):
     lcb_n: int = 10  # LCB official: n=10 samples, temperature 0.2 (pass@1 estimate)
     lcb_temperature: float = 0.2
     lcb_default_start_date: str | None = None  # used when a model has no knowledge_cutoff
+    # retrieval pipeline (mteb 2.x is the harness for MTEB, BEIR and own data)
+    reranker_model: str = "qrr"  # model id (kind: reranker) used for the "+ reranker" variants
+    rerank_top_k: int = 100  # rerank the top-100 of the embedding stage
+    mteb_retrieval_tasks: list[str] = Field(
+        default_factory=lambda: [  # MTEB(eng, v2) retrieval
+            "ArguAna",
+            "CQADupstackGamingRetrieval",
+            "CQADupstackUnixRetrieval",
+            "ClimateFEVERHardNegatives",
+            "FEVERHardNegatives",
+            "FiQA2018",
+            "HotpotQAHardNegatives",
+            "SCIDOCS",
+            "TRECCOVID",
+            "Touche2020Retrieval.v3",
+        ]
+    )
+    mteb_reranking_tasks: list[str] = Field(
+        default_factory=lambda: [  # MTEB(eng, v2) reranking + SciDocsRR
+            "AskUbuntuDupQuestions",
+            "MindSmallReranking",
+            "SciDocsRR",
+        ]
+    )
+    beir_tasks: list[str] = Field(
+        default_factory=lambda: [  # BEIR datasets with corpora an API embedder can afford
+            "SciFact",
+            "NFCorpus",
+            "FiQA2018",
+            "ArguAna",
+            "SCIDOCS",
+            "TRECCOVID",
+            "Touche2020",
+            "CQADupstackRetrieval",
+        ]
+    )  # `--subset all` = mteb's full BEIR benchmark (adds NQ, HotpotQA, FEVER, ClimateFEVER, DBPedia, Quora, MSMARCO)
+    own_retrieval_dir: str = "retrieval"  # retrieval/queries.jsonl + retrieval/docs/
     runs_dir: str = "runs"
     results_dir: str = "results"
 

@@ -14,7 +14,7 @@ Status by build stage:
 | 3 | τ²-bench (airline, retail, telecom) | **done** (proved end to end on airline against a mock endpoint) |
 | 4 | Harbor: Terminal-Bench 2.0, SWE-bench Verified (Docker) | **done** (no Docker in the build sandbox: verified by command/parse tests; run `--smoke` on a Docker host first) |
 | 5 | Aider Polyglot, LiveCodeBench, RULER | **done** for Aider + LiveCodeBench (structural verification: Docker/HF not available in the build sandbox); **RULER skipped** - see below |
-| 6 | Retrieval pipeline (MTEB, BEIR, own data) | planned |
+| 6 | Retrieval pipeline (MTEB, BEIR, own data) | **done** (own-data path proved end to end with mteb's evaluator; HF datasets not reachable in the build sandbox) |
 | 7 | Serving benchmark (`vllm bench serve`) + TTFT probe | planned |
 | 8 | `benchlab report` → `report.html`, `results/tracker.json` | planned |
 | 9 | Optional: Toolathlon, AutomationBench, OSWorld | planned |
@@ -288,6 +288,34 @@ which fails `prepare()` with that explanation instead of faking a result.
 Options: run NeMo-Skills on the GPU box serving Laguna/MiMo (official, heavy);
 NeMo-Skills' OpenAI-server mode against the proxy; or accept a RULER port in
 another framework (violates the official-harness rule). Your call.
+
+## Stage 6: retrieval (embedding + reranker)
+
+Harness: [`mteb`](https://github.com/embeddings-benchmark/mteb) pinned to
+**2.24.12** in `harnesses/retrieval/.venv` (brings sentence-transformers and
+pytrec_eval). These models do not chat, so this pipeline calls the embedding /
+rerank endpoints **directly** (mteb's `OpenAIAPIEncodeWrapper` ->
+`<host>/v1/embeddings`, `OpenAIAPIRerankWrapper` -> `<host>/v1/rerank`, as
+served by vLLM / TEI) or loads local weights (`base_url: local` ->
+`SentenceTransformerEncoderWrapper` / `CrossEncoderWrapper`). No proxy, so cost
+is reported as n/a (self-hosted). Run with `--model qemb`; the reranker is
+`settings.reranker_model` (`qrr`).
+
+| key | what | tracker |
+|---|---|---|
+| `mteb_ret` | MTEB(eng, v2) retrieval tasks (10, `settings.mteb_retrieval_tasks`), embedding only, mean nDCG@10 | `qemb__mteb_ret` |
+| `mteb_rr` | MTEB(eng, v2) reranking tasks + SciDocsRR, scored by the embedding model (standard MTEB) and by the cross-encoder | `qemb__mteb_rr`, `qrr__mteb_rr` |
+| `beir` | BEIR datasets as packaged by mteb (`settings.beir_tasks`: the 8 with corpora an API embedder can afford; `--subset all` = all 15), nDCG@10 embedding-only, then **re-rank the top-100** with the reranker (`convert_to_reranking`) | `qemb__beir`, `qemb__beir_rr` |
+| `own` | your `retrieval/queries.jsonl` + `retrieval/docs/` through the same evaluator (custom `AbsTaskRetrieval`), recall@10 / nDCG@10 with and without the reranker | `qemb__own_rec`, `qemb__own_ndcg`, `qemb__own_rec_rr`, `qemb__own_ndcg_rr` |
+
+Scoring is mteb's retrieval evaluator in every case (pytrec_eval nDCG@k /
+recall@k); BenchLab only averages task scores. mteb's result cache lives in
+the run folder, so a re-run resumes at task granularity. `--smoke` uses the
+NanoBEIR tasks (retrieval) / SciDocsRR (reranking). Instruction prompts for
+models that need them go in the model's `extra_params: {prompts: {query: "...",
+document: "..."}}`. Verified here end to end on own data with deterministic
+test models (`tests/test_retrieval_adapter.py`); MTEB/BEIR datasets come from
+HuggingFace, which the build sandbox could not reach.
 
 ## Commands
 

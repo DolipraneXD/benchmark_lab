@@ -426,28 +426,60 @@ _reg(
 )
 
 # ---- retrieval & serving (separate pipelines, listed for --dry-run completeness) -----
-for k, d in [
-    ("mteb_ret", "MTEB retrieval"),
-    ("mteb_rr", "MTEB reranking"),
-    ("beir", "BEIR nDCG@10"),
-    ("beir_rr", "BEIR nDCG@10 + reranker"),
-    ("own_rec", "own data recall@10"),
-    ("own_rec_rr", "own data recall@10 + rr"),
-    ("own_ndcg", "own data nDCG@10"),
-    ("own_ndcg_rr", "own data nDCG@10 + rr"),
-]:
-    _reg(
-        BenchInfo(
-            k,
-            d,
-            4,
-            ("retrieval",),
-            k,
-            "mteb / beir / benchlab",
-            adapter=None,
-            only_models=("qemb",),
-        )
+_reg(
+    BenchInfo(
+        "mteb_ret",
+        "MTEB retrieval (eng v2 subset)",
+        4,
+        ("retrieval",),
+        "mteb_ret",
+        "mteb",
+        adapter="benchlab.adapters.retrieval:MTEBRetrievalAdapter",
+        only_models=("qemb",),
+        n_tasks_default=10,
     )
+)
+_reg(
+    BenchInfo(
+        "mteb_rr",
+        "MTEB reranking (eng v2 subset)",
+        4,
+        ("retrieval",),
+        "mteb_rr",
+        "mteb",
+        adapter="benchlab.adapters.retrieval:MTEBRerankingAdapter",
+        only_models=("qemb",),
+        n_tasks_default=3,
+    )
+)
+_reg(
+    BenchInfo(
+        "beir",
+        "BEIR nDCG@10 (embedding, and + reranker top-100)",
+        4,
+        ("retrieval",),
+        "beir",
+        "mteb (BEIR benchmark)",
+        adapter="benchlab.adapters.retrieval:BEIRAdapter",
+        only_models=("qemb",),
+        n_tasks_default=8,
+        aliases=("beir_rr",),
+    )
+)
+_reg(
+    BenchInfo(
+        "own",
+        "own retrieval data recall@10 / nDCG@10 (± reranker)",
+        4,
+        ("retrieval",),
+        "own",
+        "mteb (custom task on retrieval/)",
+        adapter="benchlab.adapters.retrieval:OwnDataAdapter",
+        only_models=("qemb",),
+        n_tasks_default=1,
+        aliases=("own_rec", "own_rec_rr", "own_ndcg", "own_ndcg_rr"),
+    )
+)
 for k, d in [
     ("srv_quant", "quantization"),
     ("srv_gpus", "GPUs"),
