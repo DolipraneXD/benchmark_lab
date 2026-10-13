@@ -1,0 +1,29 @@
+{
+  "name": "tb_terminal-bench_2.0_20",
+  "n": 20,
+  "seed": 20261013,
+  "pool_size": 89,
+  "source": "harbor registry terminal-bench@2.0 (69671fba)",
+  "ids": [
+    "break-filter-js-from-html",
+    "caffe-cifar-10",
+    "circuit-fibsqrt",
+    "compile-compcert",
+    "configure-git-webserver",
+    "crack-7z-hash",
+    "feal-differential-cryptanalysis",
+    "fix-code-vulnerability",
+    "fix-ocaml-gc",
+    "gcode-to-text",
+    "llm-inference-batching-scheduler",
+    "nginx-request-logging",
+    "path-tracing-reverse",
+    "polyglot-rust-c",
+    "regex-chess",
+    "reshard-c4-data",
+    "sam-cell-seg",
+    "sanitize-git-repo",
+    "sparql-university",
+    "sqlite-db-truncate"
+  ]
+}

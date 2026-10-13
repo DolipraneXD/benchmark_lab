@@ -44,7 +44,9 @@ class ModelSpec(BaseModel):
     tracker_id: str | None = None
     compare_to: str | None = None
     knowledge_cutoff: str | None = None  # YYYY-MM-DD; LiveCodeBench uses problems after it
-    serving: dict[str, Any] = Field(default_factory=dict)  # self-hosted: {quantization, gpus, gpu_mem_gb, nvidia_smi: local|ssh host}
+    serving: dict[str, Any] = Field(
+        default_factory=dict
+    )  # self-hosted: {quantization, gpus, gpu_mem_gb, nvidia_smi: local|ssh host}
     notes: str = ""
 
     @field_validator("id")
@@ -103,6 +105,9 @@ class ModelSpec(BaseModel):
 
 
 class Settings(BaseModel):
+    profile: Literal["full", "lite"] = (
+        "full"  # lite = same benches, smaller fixed subsets (see LITE_PROFILE)
+    )
     baseline_model: str = "claude"
     litellm_proxy_port: int = 4000
     litellm_proxy_host: str = "127.0.0.1"
@@ -114,6 +119,11 @@ class Settings(BaseModel):
     grader_model: str | None = None  # LLM grader for model-graded benches (default: baseline)
     tau2_ref: str = "v1.0.1"  # git tag/commit of sierra-research/tau2-bench to pin
     tau2_tasks_per_domain: int = 20  # fixed seeded subset of the `base` split per domain
+    tau2_trials: int | None = None  # trials when --trials is not given (default: 3 for pass^k)
+    bfcl_subset: str | None = (
+        None  # BFCL category set when --subset is not given (default single_turn)
+    )
+    gaia_subset_size: int = 50  # fixed seeded subset of the GAIA validation split
     tau2_max_steps: int = 200  # tau2 default
     harbor_subset_size: int = 50  # fixed seeded subset for Terminal-Bench / SWE-bench
     tb_dataset: str = "terminal-bench@2.0"  # harbor registry name@version
@@ -169,30 +179,69 @@ class Settings(BaseModel):
     )  # `--subset all` = mteb's full BEIR benchmark (adds NQ, HotpotQA, FEVER, ClimateFEVER, DBPedia, Quora, MSMARCO)
     own_retrieval_dir: str = "retrieval"  # retrieval/queries.jsonl + retrieval/docs/
     # serving benchmark (guidellm against the self-hosted endpoint) and the TTFT probe
-    serving_tool: str = "guidellm"  # guidellm | vllm  (vllm = `vllm bench serve`, needs vllm installed)
+    serving_tool: str = (
+        "guidellm"  # guidellm | vllm  (vllm = `vllm bench serve`, needs vllm installed)
+    )
     serving_concurrencies: list[int] = Field(default_factory=lambda: [1, 8, 32])
     serving_requests_per_level: int = 64  # requests per concurrency level
     serving_prompt_tokens: int = 512  # synthetic prompt length
     serving_output_tokens: int = 256  # synthetic output length
-    serving_prompts_file: str | None = None  # JSONL {"prompt": ...} to use instead of synthetic text (same file for every model)
+    serving_prompts_file: str | None = (
+        None  # JSONL {"prompt": ...} to use instead of synthetic text (same file for every model)
+    )
     ttft_prompts: int = 10  # fixed prompt set size for the TTFT probe (all models)
     ttft_repeats: int = 3  # streamed repeats per prompt
     # stage 9 (optional): AutomationBench, Toolathlon, OSWorld
-    autobench_ref: str = "4a8e1061254004d9dac807054eed33fad7d1ff14"  # zapier/AutomationBench (v1.0.6)
+    autobench_ref: str = (
+        "4a8e1061254004d9dac807054eed33fad7d1ff14"  # zapier/AutomationBench (v1.0.6)
+    )
     autobench_toolset: str = "api"  # api | zapier | limited_zapier (README default: api)
     autobench_max_steps: int = 50
-    toolathlon_ref: str = "9be8d8fe07a497b18ee61e3f2ae694e9797f39eb"  # hkust-nlp/Toolathlon (Toolathlon-Verified)
+    autobench_domains: list[str] | None = None  # default: the 6 public scored domains
+    toolathlon_ref: str = (
+        "9be8d8fe07a497b18ee61e3f2ae694e9797f39eb"  # hkust-nlp/Toolathlon (Toolathlon-Verified)
+    )
     osworld_ref: str = "b138d348256078fa634fc3b73567a7337c793e6b"  # xlang-ai/OSWorld
     osworld_provider: str = "docker"  # docker (needs KVM) | aws | vmware | virtualbox ...
     osworld_max_steps: int = 15
-    osworld_meta: str = "test_all.json"  # 369 tasks; test_nogdrive.json (361) when Google Drive is not configured
+    osworld_meta: str = (
+        "test_all.json"  # 369 tasks; test_nogdrive.json (361) when Google Drive is not configured
+    )
     osworld_client_password: str = "password"  # VM user password for the docker/vmware images
     # report / tracker (stage 8)
-    sanity_threshold_pts: float = 3.0  # |ours - published| above this is flagged (gpt_sanity, suspicious list)
-    self_hosted_gap_pts: float = 5.0  # self-hosted below its API counterpart by more than this -> hint
-    suspicious_error_rate: float = 0.05  # (timeouts + API errors + malformed tool calls) / tasks above this -> flagged
+    sanity_threshold_pts: float = (
+        3.0  # |ours - published| above this is flagged (gpt_sanity, suspicious list)
+    )
+    self_hosted_gap_pts: float = (
+        5.0  # self-hosted below its API counterpart by more than this -> hint
+    )
+    suspicious_error_rate: float = (
+        0.05  # (timeouts + API errors + malformed tool calls) / tasks above this -> flagged
+    )
     runs_dir: str = "runs"
     results_dir: str = "results"
+
+    @model_validator(mode="after")
+    def _apply_profile(self) -> Settings:
+        """`profile: lite` sets the LITE_PROFILE knobs unless the user set them explicitly."""
+        if self.profile == "lite":
+            for k, v in LITE_PROFILE.items():
+                if k not in self.model_fields_set:
+                    setattr(self, k, v)
+        return self
+
+
+LITE_PROFILE: dict[str, Any] = {
+    # same benchmarks, smaller fixed subsets: roughly 1/5 of the full cost
+    "bfcl_subset": "lite",  # 9 single-turn categories, 1064 samples (not the leaderboard mix)
+    "tau2_tasks_per_domain": 10,
+    "tau2_trials": 1,  # pass^1 only; no pass^k
+    "harbor_subset_size": 20,  # Terminal-Bench / SWE-bench
+    "gaia_subset_size": 20,
+    "lcb_n": 1,  # one sample per problem instead of 10
+    "autobench_domains": ["sales"],  # 100 tasks instead of 600
+    "serving_requests_per_level": 32,
+}
 
 
 class BenchConfig(BaseModel):

@@ -72,7 +72,7 @@ class AutomationBenchAdapter(BenchAdapter):
             "ref": self.ref,
             "toolset": self.cfg.settings.autobench_toolset,
             "max_steps": self.cfg.settings.autobench_max_steps,
-            "domains": list(PUBLIC_DOMAINS),
+            "domains": list(self.cfg.settings.autobench_domains or PUBLIC_DOMAINS),
         }
 
     def domains(self, subset: str | None, smoke: bool) -> list[str]:
@@ -80,7 +80,7 @@ class AutomationBenchAdapter(BenchAdapter):
             return ["sales"]
         if subset and subset != "all":
             return [d.strip() for d in subset.split(",") if d.strip()]
-        return list(PUBLIC_DOMAINS)
+        return list(self.cfg.settings.autobench_domains or PUBLIC_DOMAINS)
 
     def plan(self, model: ModelSpec, subset: str | None, trials: int, smoke: bool) -> RunPlan:
         doms = self.domains(subset, smoke)

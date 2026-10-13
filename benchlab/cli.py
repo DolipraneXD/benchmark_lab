@@ -220,6 +220,8 @@ def _plan_rows(
     for b in benches:
         adapter_cls = registry.load_adapter(b)
         k = trials if trials is not None else (b.trials_default or 1)
+        if trials is None and b.key.startswith("t2") and cfg.settings.tau2_trials:
+            k = cfg.settings.tau2_trials  # profile: lite -> 1
         for m in specs:
             if not registry.applies_to(b, m):
                 continue

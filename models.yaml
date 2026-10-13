@@ -22,6 +22,7 @@
 #   notes              free text, copied into every run's config.json
 
 settings:
+  profile: full                 # lite = same benches, ~1/5 of the cost (smaller fixed subsets; see README "Cheap mode")
   baseline_model: claude            # every delta in the report is vs this id
   litellm_proxy_port: 4000
   default_temperature: 0.0

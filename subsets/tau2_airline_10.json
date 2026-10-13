@@ -1,0 +1,19 @@
+{
+  "name": "tau2_airline_10",
+  "n": 10,
+  "seed": 20261013,
+  "pool_size": 50,
+  "source": "tau2-bench v1.0.1 airline base split",
+  "ids": [
+    "14",
+    "2",
+    "27",
+    "32",
+    "35",
+    "36",
+    "41",
+    "44",
+    "5",
+    "9"
+  ]
+}

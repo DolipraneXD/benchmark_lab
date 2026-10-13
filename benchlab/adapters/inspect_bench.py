@@ -611,6 +611,19 @@ BFCL_SUBSETS = {
     "multi_turn": BFCL_MULTI_TURN,
     "leaderboard": BFCL_SINGLE_TURN + BFCL_MULTI_TURN,
     "smoke": ["simple_python", "multiple", "irrelevance"],
+    # `profile: lite`: the cheap single-turn core without the two biggest categories
+    # (simple_python 400, live_multiple 1053) and the hallucination sets; 1064 samples
+    "lite": [
+        "simple_java",
+        "simple_javascript",
+        "multiple",
+        "parallel",
+        "parallel_multiple",
+        "live_simple",
+        "live_parallel",
+        "live_parallel_multiple",
+        "live_relevance",
+    ],
 }
 BFCL_DEFAULT_SUBSET = "single_turn"
 
@@ -636,7 +649,13 @@ class BFCLAdapter(InspectAdapter):
                     f"unknown BFCL categories {unknown}; known subsets {list(BFCL_SUBSETS)}"
                 )
             return cats
-        return BFCL_SUBSETS[BFCL_DEFAULT_SUBSET]
+        return BFCL_SUBSETS[self.default_subset_name()]
+
+    def default_subset_name(self) -> str:
+        name = self.cfg.settings.bfcl_subset or BFCL_DEFAULT_SUBSET
+        if name not in BFCL_SUBSETS:
+            raise ValueError(f"settings.bfcl_subset {name!r} unknown; known {list(BFCL_SUBSETS)}")
+        return name
 
     def task_args(self, subset: str | None, smoke: bool) -> dict[str, Any]:
         return {"categories": self.categories(subset, smoke)}
@@ -647,7 +666,7 @@ class BFCLAdapter(InspectAdapter):
         name = (
             subset
             if (subset and subset in BFCL_SUBSETS)
-            else ("smoke" if smoke else BFCL_DEFAULT_SUBSET)
+            else ("smoke" if smoke else self.default_subset_name())
         )
         notes = [f"categories={name} ({len(cats)} cats, {n} samples)"]
         if smoke:
@@ -695,7 +714,11 @@ class GAIAAdapter(InspectAdapter):
     task = "inspect_evals/gaia"
     needs_docker = True
     env_required = ("HF_TOKEN",)  # gated dataset on HuggingFace
-    default_n_tasks = GAIA_DEFAULT_N
+
+    @property
+    def default_n_tasks(self) -> int:  # type: ignore[override]
+        return self.cfg.settings.gaia_subset_size
+
     tokens_in_per_task = 50000
     tokens_out_per_task = 3000
     task_version_note = "validation split, react agent (bash/python/web), message_limit 100"
@@ -714,7 +737,7 @@ class GAIAAdapter(InspectAdapter):
     def subset_spec(self, subset: str | None, smoke: bool) -> dict[str, Any] | None:
         if smoke:
             return None  # --limit 3 on the full validation set
-        n = int(subset) if (subset and subset.isdigit()) else GAIA_DEFAULT_N
+        n = int(subset) if (subset and subset.isdigit()) else self.cfg.settings.gaia_subset_size
         if n >= GAIA_VALIDATION_N:
             return None  # full validation set
         name = f"gaia_validation_{n}"
@@ -740,7 +763,7 @@ class GAIAAdapter(InspectAdapter):
     def resolve_subset(self, subset, smoke):
         if smoke:
             return SMOKE_LIMIT, None, ["smoke: --limit 3"]
-        n = int(subset) if (subset and subset.isdigit()) else GAIA_DEFAULT_N
+        n = int(subset) if (subset and subset.isdigit()) else self.cfg.settings.gaia_subset_size
         if n >= GAIA_VALIDATION_N:
             return GAIA_VALIDATION_N, None, ["full validation split"]
         try:

@@ -68,3 +68,25 @@ def test_validation_errors(tmp_path):
     )
     with pytest.raises(Exception, match="must match"):
         load_config(p)
+
+
+def test_lite_profile_overrides_only_unset_knobs(models_yaml, tmp_path):
+    from benchlab.config import LITE_PROFILE, load_config
+
+    text = models_yaml.read_text().replace(
+        "settings:\n", "settings:\n  profile: lite\n  harbor_subset_size: 30\n", 1
+    )
+    p = tmp_path / "lite.yaml"
+    p.write_text(text)
+    s = load_config(p).settings
+    assert (
+        s.profile == "lite"
+        and s.bfcl_subset == "lite"
+        and s.tau2_tasks_per_domain == 10
+        and s.tau2_trials == 1
+    )
+    assert s.lcb_n == 1 and s.gaia_subset_size == 20 and s.autobench_domains == ["sales"]
+    assert s.harbor_subset_size == 30  # explicit value wins over the profile
+    assert set(LITE_PROFILE) <= set(type(s).model_fields)
+    full = load_config(models_yaml).settings
+    assert full.bfcl_subset is None and full.tau2_trials is None and full.harbor_subset_size == 50

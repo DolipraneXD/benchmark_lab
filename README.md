@@ -460,6 +460,33 @@ temperature 1.0 / top_p 0.9 / max_tokens 1500 are recorded as deviations.
 Not exercised here (no KVM): command building and result parsing are tested on a
 synthetic result tree.
 
+## Cheap mode (`profile: lite`)
+
+The full core suite costs roughly $160 per model at Claude Sonnet 5.5 prices
+(BFCL 3,641 samples, τ² 20 tasks × 3 trials per domain, 50-task Terminal-Bench
+and SWE-bench subsets, LiveCodeBench with 10 samples per problem). Set
+`profile: lite` in `settings:` (or override any knob individually) to run the
+same benchmarks on smaller **fixed, seeded** subsets, identical for every model:
+
+| knob | full | lite |
+|---|---|---|
+| `bfcl_subset` | `single_turn` (3,641) | `lite`: 9 single-turn categories, 1,064 samples |
+| `tau2_tasks_per_domain` × `tau2_trials` | 20 × 3 | 10 × 1 (pass^1 only) |
+| `harbor_subset_size` (TB, SWE) | 50 | 20 |
+| `gaia_subset_size` | 50 | 20 |
+| `lcb_n` | 10 samples/problem | 1 |
+| `autobench_domains` | 6 domains, 600 tasks | `sales`, 100 tasks |
+| `serving_requests_per_level` | 64 | 32 |
+
+Rough cost per model at Claude prices: stage 1 ≈ $9, stage 2 ≈ $4.5 (+ the
+same again on the Claude user simulator), stage 3 ≈ $42, GAIA ≈ $3; LCB and
+Aider ≈ $40. About a fifth of the full suite. Lite scores are **not** comparable
+with full-profile or published numbers (different subset sizes and BFCL
+category mix); every note records the subset, and the report flags published
+comparisons on lite runs as deviations. Other savings that do not change the
+subsets: point `tau2_user_model` at a cheaper strong model, and run `--stage 1`
+on everything before paying for stages 2-3 on models that already look broken.
+
 ## Commands
 
 ```bash
