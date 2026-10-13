@@ -44,6 +44,7 @@ class ModelSpec(BaseModel):
     tracker_id: str | None = None
     compare_to: str | None = None
     knowledge_cutoff: str | None = None  # YYYY-MM-DD; LiveCodeBench uses problems after it
+    serving: dict[str, Any] = Field(default_factory=dict)  # self-hosted: {quantization, gpus, gpu_mem_gb, nvidia_smi: local|ssh host}
     notes: str = ""
 
     @field_validator("id")
@@ -167,6 +168,15 @@ class Settings(BaseModel):
         ]
     )  # `--subset all` = mteb's full BEIR benchmark (adds NQ, HotpotQA, FEVER, ClimateFEVER, DBPedia, Quora, MSMARCO)
     own_retrieval_dir: str = "retrieval"  # retrieval/queries.jsonl + retrieval/docs/
+    # serving benchmark (guidellm against the self-hosted endpoint) and the TTFT probe
+    serving_tool: str = "guidellm"  # guidellm | vllm  (vllm = `vllm bench serve`, needs vllm installed)
+    serving_concurrencies: list[int] = Field(default_factory=lambda: [1, 8, 32])
+    serving_requests_per_level: int = 64  # requests per concurrency level
+    serving_prompt_tokens: int = 512  # synthetic prompt length
+    serving_output_tokens: int = 256  # synthetic output length
+    serving_prompts_file: str | None = None  # JSONL {"prompt": ...} to use instead of synthetic text (same file for every model)
+    ttft_prompts: int = 10  # fixed prompt set size for the TTFT probe (all models)
+    ttft_repeats: int = 3  # streamed repeats per prompt
     runs_dir: str = "runs"
     results_dir: str = "results"
 

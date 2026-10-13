@@ -27,6 +27,15 @@ def make_app() -> FastAPI:
     app = FastAPI()
     app.state.requests = []
 
+    @app.get("/health")
+    async def health():
+        return JSONResponse({"status": "ok"})
+
+    @app.get("/v1/models")
+    async def models():
+        return JSONResponse({"object": "list", "data": [{"id": m, "object": "model", "owned_by": "mock"}
+                                                         for m in ("mock-model", "no-tools", "malformed-tools", "no-usage", "slow-model")]})
+
     @app.post("/v1/chat/completions")
     async def chat(req: Request, authorization: str | None = Header(default=None)):
         body = await req.json()

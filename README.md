@@ -15,7 +15,7 @@ Status by build stage:
 | 4 | Harbor: Terminal-Bench 2.0, SWE-bench Verified (Docker) | **done** (no Docker in the build sandbox: verified by command/parse tests; run `--smoke` on a Docker host first) |
 | 5 | Aider Polyglot, LiveCodeBench, RULER | **done** for Aider + LiveCodeBench (structural verification: Docker/HF not available in the build sandbox); **RULER skipped** - see below |
 | 6 | Retrieval pipeline (MTEB, BEIR, own data) | **done** (own-data path proved end to end with mteb's evaluator; HF datasets not reachable in the build sandbox) |
-| 7 | Serving benchmark (`vllm bench serve`) + TTFT probe | planned |
+| 7 | Serving benchmark (guidellm / `vllm bench serve`) + TTFT probe | **done** (both proved end to end against a mock endpoint; GPU figures come from `nvidia-smi` on the serving box) |
 | 8 | `benchlab report` → `report.html`, `results/tracker.json` | planned |
 | 9 | Optional: Toolathlon, AutomationBench, OSWorld | planned |
 
@@ -317,6 +317,51 @@ document: "..."}}`. Verified here end to end on own data with deterministic
 test models (`tests/test_retrieval_adapter.py`); MTEB/BEIR datasets come from
 HuggingFace, which the build sandbox could not reach.
 
+## Stage 7: serving benchmark and TTFT probe
+
+### TTFT probe (`ttft`, every model, stage 1)
+
+BenchLab's own measurement, not a harness: 10 fixed short prompts
+(`benchlab/adapters/ttft.py`) × 3 streamed repeats, `max_tokens 64`, one
+untimed warm-up, identical for every model, through the same LiteLLM layer as
+`benchlab check`. TTFT = time to the first streamed content chunk.
+`<id>__ttft` = **p50 seconds** (p95, mean, p50 latency and decode tokens/s in
+`result.json`; failures counted as API errors; warning when p95 > 3× p50).
+Resumable per sample; cost comes from the usage log (a few cents at most).
+
+### Serving benchmark (`serving`, self-hosted models only, stage 4)
+
+Harness: [guidellm](https://github.com/vllm-project/guidellm) **0.8.1** (the
+vLLM project's load generator) in `harnesses/serving/.venv`; or `vllm bench
+serve` (`settings.serving_tool: vllm`, needs the `vllm` package on the client,
+command built from its CLI but not exercised here). The endpoint is hit
+**directly** (no proxy, so no proxy latency in the numbers) at
+`/v1/chat/completions`, one guidellm run per concurrency level
+(`settings.serving_concurrencies`, default 1 / 8 / 32), `serving_requests_per_level`
+(64) requests each, synthetic prompts of `serving_prompt_tokens` (512) →
+`serving_output_tokens` (256) tokens generated with the model's HF tokenizer
+(`serving.tokenizer` when the served name is not a HF id). The whole spec goes
+into a guidellm scenario file; the API key is written only to a 0600 temp file
+deleted after the run (a redacted copy of the scenario is kept in `raw/`).
+Set `settings.serving_prompts_file` (JSONL `{"prompt": ...}`) to use a fixed
+prompt set instead of synthetic text, the same for every model.
+
+| key | value | from |
+|---|---|---|
+| `<id>__srv_ttft` | TTFT median at concurrency 1, seconds (p95 in `result.json`) | `time_to_first_token_ms.successful.median` |
+| `<id>__srv_tps` | tokens/s per request at concurrency 1 = 1000 / median inter-token latency | `inter_token_latency_ms.successful.median` |
+| `<id>__srv_c1`, `srv_c8`, `srv_c32` | total output tokens/s at that concurrency | `output_tokens_per_second.successful.mean` |
+| `<id>__srv_mem`, `srv_gpus` | GPU memory used (GB) and GPU count | `nvidia-smi` (`serving.nvidia_smi: local` or `ssh:<host>`), else `serving.gpu_mem_gb` / `serving.gpus` |
+| `<id>__srv_quant` | quantization | `serving.quantization` in models.yaml (vLLM does not expose it over the API) |
+| `<id>__srv_match` | self-hosted vs API score gap | computed by `benchlab report` (stage 8) |
+
+Per-level results stay as `raw/c<N>.json`, so an interrupted run resumes at the
+next level. Errored requests are counted as API errors and flagged. `--smoke` =
+concurrency 1, 4 requests. Verified end to end against the mock endpoint
+(`tests/test_serving_adapters.py`); synthetic prompts need the HF tokenizer,
+which the build sandbox could not download, so the fixed-prompt path was used
+there.
+
 ## Commands
 
 ```bash
@@ -328,6 +373,8 @@ benchlab run --model glm --suite core --stage 1
 benchlab run --model all --bench bfcl,gpqa [--trials 3] [--budget-usd 20] [--dry-run] [--smoke]
 benchlab runs                             # list run folders and their status
 benchlab usage                            # tokens / cost / latency / error rates per model
+benchlab run --model all --bench ttft      # TTFT probe, every model (stage 1)
+benchlab run --model all --bench serving   # serving benchmark, self-hosted models only
 benchlab report                           # stage 8
 ```
 
@@ -338,7 +385,7 @@ every model that has them; `--suite` and `--bench` intersect with it.
 
 | Stage | Command | What it runs |
 |---|---|---|
-| 1 | `benchlab run --model all --stage 1` | GPQA Diamond + BFCL (cheap; catches broken setups) |
+| 1 | `benchlab run --model all --stage 1` | GPQA Diamond + BFCL + TTFT probe (cheap; catches broken setups) |
 | 2 | `benchlab run --model all --stage 2` | τ²-bench airline/retail/telecom, 20 tasks/domain × 3 trials (trials default to 3 for τ²) |
 | 3 | `benchlab run --model all --stage 3` | Terminal-Bench 2.0 then SWE-bench Verified, fixed 50-task subsets (committed under `subsets/`) |
 | 4 | `benchlab run --model <ids> --stage 4` | full runs / extras, only for named models |
@@ -366,7 +413,7 @@ short prompts with tool schemas); BFCL `multi_turn` adds roughly as much again
 | Aider Polyglot, LiveCodeBench | Docker |
 | RULER | long-context endpoint (up to 128k) |
 | Retrieval (MTEB / BEIR / own) | embedding + rerank endpoints or a GPU for sentence-transformers |
-| Serving | runs `vllm bench serve` against the self-hosted box; `nvidia-smi` on it |
+| Serving | guidellm (default) or `vllm bench serve` from any box that can reach the self-hosted endpoint; `nvidia-smi` on the serving box (local or over ssh) |
 
 Details per benchmark are added with each stage.
 

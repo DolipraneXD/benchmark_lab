@@ -480,18 +480,20 @@ _reg(
         aliases=("own_rec", "own_rec_rr", "own_ndcg", "own_ndcg_rr"),
     )
 )
-for k, d in [
-    ("srv_quant", "quantization"),
-    ("srv_gpus", "GPUs"),
-    ("srv_mem", "GPU memory"),
-    ("srv_ttft", "serving TTFT"),
-    ("srv_tps", "tokens/s per request"),
-    ("srv_c1", "throughput c=1"),
-    ("srv_c8", "throughput c=8"),
-    ("srv_c32", "throughput c=32"),
-    ("srv_match", "self-hosted vs API score match"),
-]:
-    _reg(BenchInfo(k, d, 4, ("serving",), k, "vllm bench serve", adapter=None))
+_reg(
+    BenchInfo(
+        "serving",
+        "serving benchmark (self-hosted): TTFT, tok/s, throughput c=1/8/32, GPU mem, quant",
+        4,
+        ("serving",),
+        "serving",
+        "guidellm (or vllm bench serve)",
+        adapter="benchlab.adapters.serving:ServingAdapter",
+        n_tasks_default=3,
+        aliases=("srv_quant", "srv_gpus", "srv_mem", "srv_ttft", "srv_tps", "srv_c1", "srv_c8", "srv_c32"),
+        notes="srv_match (self-hosted vs API score gap) is computed by `benchlab report`",
+    )
+)
 
 SUITES = ("core", "coder", "extras", "retrieval", "serving")
 STAGE_BENCHES = {
@@ -516,6 +518,8 @@ def applies_to(b: BenchInfo, m: ModelSpec) -> bool:
         return m.id in b.only_models or b.key in m.extras
     if b.key in m.extras:
         return True
+    if "serving" in b.suites and b.suites == ("serving",):
+        return m.self_hosted and m.kind == "chat"  # self-hosted chat endpoints only
     return any(s in (m.suites or []) for s in b.suites)
 
 

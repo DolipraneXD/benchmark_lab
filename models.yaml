@@ -77,6 +77,12 @@ models:
     model: openai/gpt-oss-120b
     api_key_env: VLLM_API_KEY
     self_hosted: true
+    serving:                                         # stage 7 serving benchmark (srv_* keys)
+      quantization: null                            # fill in: fp8, awq-int4, bf16 ... (recorded as srv_quant; null -> warning)
+      gpus: 1                                        # srv_gpus (overridden by nvidia-smi when reachable)
+      nvidia_smi: local                              # local | ssh:<host> | omit -> use gpu_mem_gb below
+      # gpu_mem_gb: 80                               # srv_mem when nvidia-smi is not reachable
+      # tokenizer: org/model                         # HF tokenizer for synthetic prompts (default: model name)
     price_in_per_mtok: 0.0
     price_out_per_mtok: 0.0
     max_concurrency: 16
@@ -104,6 +110,12 @@ models:
     model: Qwen/Qwen3.8-27B
     api_key_env: VLLM_API_KEY
     self_hosted: true
+    serving:                                         # stage 7 serving benchmark (srv_* keys)
+      quantization: null                            # fill in: fp8, awq-int4, bf16 ... (recorded as srv_quant; null -> warning)
+      gpus: 1                                        # srv_gpus (overridden by nvidia-smi when reachable)
+      nvidia_smi: local                              # local | ssh:<host> | omit -> use gpu_mem_gb below
+      # gpu_mem_gb: 80                               # srv_mem when nvidia-smi is not reachable
+      # tokenizer: org/model                         # HF tokenizer for synthetic prompts (default: model name)
     price_in_per_mtok: 0.0
     price_out_per_mtok: 0.0
     max_concurrency: 16
@@ -130,6 +142,12 @@ models:
     model: laguna-s-2.1
     api_key_env: VLLM_API_KEY
     self_hosted: true
+    serving:                                         # stage 7 serving benchmark (srv_* keys)
+      quantization: null                            # fill in: fp8, awq-int4, bf16 ... (recorded as srv_quant; null -> warning)
+      gpus: 1                                        # srv_gpus (overridden by nvidia-smi when reachable)
+      nvidia_smi: local                              # local | ssh:<host> | omit -> use gpu_mem_gb below
+      # gpu_mem_gb: 80                               # srv_mem when nvidia-smi is not reachable
+      # tokenizer: org/model                         # HF tokenizer for synthetic prompts (default: model name)
     price_in_per_mtok: 0.0
     price_out_per_mtok: 0.0
     max_concurrency: 16
@@ -157,6 +175,12 @@ models:
     model: step-5-preview
     api_key_env: VLLM_API_KEY
     self_hosted: true
+    serving:                                         # stage 7 serving benchmark (srv_* keys)
+      quantization: null                            # fill in: fp8, awq-int4, bf16 ... (recorded as srv_quant; null -> warning)
+      gpus: 1                                        # srv_gpus (overridden by nvidia-smi when reachable)
+      nvidia_smi: local                              # local | ssh:<host> | omit -> use gpu_mem_gb below
+      # gpu_mem_gb: 80                               # srv_mem when nvidia-smi is not reachable
+      # tokenizer: org/model                         # HF tokenizer for synthetic prompts (default: model name)
     price_in_per_mtok: 0.0
     price_out_per_mtok: 0.0
     max_concurrency: 16
@@ -172,6 +196,12 @@ models:
     model: Qwen/Qwen3-Coder-30B-A3B-Instruct
     api_key_env: VLLM_API_KEY
     self_hosted: true
+    serving:                                         # stage 7 serving benchmark (srv_* keys)
+      quantization: null                            # fill in: fp8, awq-int4, bf16 ... (recorded as srv_quant; null -> warning)
+      gpus: 1                                        # srv_gpus (overridden by nvidia-smi when reachable)
+      nvidia_smi: local                              # local | ssh:<host> | omit -> use gpu_mem_gb below
+      # gpu_mem_gb: 80                               # srv_mem when nvidia-smi is not reachable
+      # tokenizer: org/model                         # HF tokenizer for synthetic prompts (default: model name)
     price_in_per_mtok: 0.0
     price_out_per_mtok: 0.0
     max_concurrency: 16
@@ -188,6 +218,12 @@ models:
     model: Qwen/Qwen3-Embedding-4B
     api_key_env: VLLM_API_KEY
     self_hosted: true
+    serving:                                         # stage 7 serving benchmark (srv_* keys)
+      quantization: null                            # fill in: fp8, awq-int4, bf16 ... (recorded as srv_quant; null -> warning)
+      gpus: 1                                        # srv_gpus (overridden by nvidia-smi when reachable)
+      nvidia_smi: local                              # local | ssh:<host> | omit -> use gpu_mem_gb below
+      # gpu_mem_gb: 80                               # srv_mem when nvidia-smi is not reachable
+      # tokenizer: org/model                         # HF tokenizer for synthetic prompts (default: model name)
     max_concurrency: 16
     suites: [retrieval]
     # local alternative (sentence-transformers): set base_url: local and model to the HF id
@@ -200,5 +236,11 @@ models:
     model: Qwen/Qwen3-Reranker-4B
     api_key_env: VLLM_API_KEY
     self_hosted: true
+    serving:                                         # stage 7 serving benchmark (srv_* keys)
+      quantization: null                            # fill in: fp8, awq-int4, bf16 ... (recorded as srv_quant; null -> warning)
+      gpus: 1                                        # srv_gpus (overridden by nvidia-smi when reachable)
+      nvidia_smi: local                              # local | ssh:<host> | omit -> use gpu_mem_gb below
+      # gpu_mem_gb: 80                               # srv_mem when nvidia-smi is not reachable
+      # tokenizer: org/model                         # HF tokenizer for synthetic prompts (default: model name)
     max_concurrency: 16
     suites: [retrieval]
