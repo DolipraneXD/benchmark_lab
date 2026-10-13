@@ -487,11 +487,39 @@ def usage(
 
 
 @app.command()
-def report(config: str | None = ConfigOpt) -> None:
-    """Generate report.html and results/tracker.json (build order step 8)."""
-    _cfg(config)
-    err.print("report/tracker export is built in stage 8; results.csv is already written per run.")
-    raise typer.Exit(2)
+def report(
+    config: str | None = ConfigOpt,
+    out: str = typer.Option("report.html", "--out", "-o", help="where to write the HTML report"),
+    include_smoke: bool = typer.Option(
+        True, "--include-smoke/--no-smoke", help="use smoke runs when nothing else exists (flagged)"
+    ),
+) -> None:
+    """Generate report.html and results/tracker.json from all finished runs (build order step 8)."""
+    from benchlab.report import build_report
+
+    cfg = _cfg(config)
+    rep = build_report(cfg, out, include_smoke=include_smoke)
+    col = rep.collected
+    if not col.entries:
+        err.print(
+            f"[yellow]no finished runs under {cfg.settings.runs_dir}; wrote an empty report[/yellow]"
+        )
+    t = Table(title="tracker.json")
+    for c in ("key", "value", "note"):
+        t.add_column(c, overflow="fold")
+    for k, v in rep.tracker.items():
+        t.add_row(k, v["v"], v["note"][:110] + ("…" if len(v["note"]) > 110 else ""))
+    console.print(t)
+    if rep.suspicious:
+        console.print(f"[yellow]suspicious results: {len(rep.suspicious)}[/yellow]")
+        for s in rep.suspicious[:30]:
+            console.print(
+                f"  - {s['model']} / {s['bench']}: {s['why']}"
+                + (f"  -> {s['hint']}" if s["hint"] else "")
+            )
+    console.print(
+        f"report: {rep.html_path}\ntracker: {rep.tracker_path}  ({len(rep.tracker)} keys, {len(col.entries)} results, {len(col.smoke_only)} smoke-only)"
+    )
 
 
 def main() -> None:  # pragma: no cover

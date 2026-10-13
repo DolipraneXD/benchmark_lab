@@ -177,6 +177,10 @@ class Settings(BaseModel):
     serving_prompts_file: str | None = None  # JSONL {"prompt": ...} to use instead of synthetic text (same file for every model)
     ttft_prompts: int = 10  # fixed prompt set size for the TTFT probe (all models)
     ttft_repeats: int = 3  # streamed repeats per prompt
+    # report / tracker (stage 8)
+    sanity_threshold_pts: float = 3.0  # |ours - published| above this is flagged (gpt_sanity, suspicious list)
+    self_hosted_gap_pts: float = 5.0  # self-hosted below its API counterpart by more than this -> hint
+    suspicious_error_rate: float = 0.05  # (timeouts + API errors + malformed tool calls) / tasks above this -> flagged
     runs_dir: str = "runs"
     results_dir: str = "results"
 

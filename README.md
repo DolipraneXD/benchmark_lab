@@ -16,7 +16,7 @@ Status by build stage:
 | 5 | Aider Polyglot, LiveCodeBench, RULER | **done** for Aider + LiveCodeBench (structural verification: Docker/HF not available in the build sandbox); **RULER skipped** - see below |
 | 6 | Retrieval pipeline (MTEB, BEIR, own data) | **done** (own-data path proved end to end with mteb's evaluator; HF datasets not reachable in the build sandbox) |
 | 7 | Serving benchmark (guidellm / `vllm bench serve`) + TTFT probe | **done** (both proved end to end against a mock endpoint; GPU figures come from `nvidia-smi` on the serving box) |
-| 8 | `benchlab report` → `report.html`, `results/tracker.json` | planned |
+| 8 | `benchlab report` → `report.html`, `results/tracker.json` | **done** |
 | 9 | Optional: Toolathlon, AutomationBench, OSWorld | planned |
 
 ## Setup
@@ -362,6 +362,44 @@ concurrency 1, 4 requests. Verified end to end against the mock endpoint
 which the build sandbox could not download, so the fixed-prompt path was used
 there.
 
+## Stage 8: `benchlab report` (report.html + tracker.json)
+
+`benchlab report` reads every finished run under `runs/` (newest non-smoke
+run per model × bench wins; a smoke run is used only when nothing else exists
+and is flagged), and writes:
+
+* `results/tracker.json` - `{"<modelId>__<benchKey>": {"v": "...", "note": "..."}}`.
+  Adapter entries are merged as written (scores one decimal, TTFT seconds,
+  cost USD; notes carry harness, subset size, trials, deviations). The report
+  derives the remaining keys:
+
+  | key | value |
+  |---|---|
+  | `<id>__cost` | total USD over the core benches that have a result, from the usage logs |
+  | `claude__coder_lcb/aider/swe/tb` | copies of the baseline's coder-suite scores |
+  | `gptoss__gpt_sanity` | worst deviation (points) vs the model's `published:` scores; note starts with `OFF by >3 pts` when any bench is off by more than `settings.sanity_threshold_pts` |
+  | `<id>__srv_match` | self-hosted minus API counterpart (`compare_to`) in points, mean over common core benches; falls back to `published`; n/a otherwise |
+  | `step5__s5_api` / `s5_self` | mean of core scores on the API / self-hosted entry over the benches both have, with the gap in the note |
+  | `step5__s5_tok` | output tokens per task-attempt self-hosted, with the API figure and ratio in the note |
+  | `dsflash__ds_cps` / `ds_lps` | USD and wall seconds per solved core task (solved = tasks × trials × score) |
+  | not-integrated benches (`mimo_tool`, `mimo_osw`, `ds_auto`) | `n/a` with the reason |
+
+* `report.html` - one static page: models × benchmarks with the delta against
+  the baseline (green/red; TTFT lower-is-better), n/trials/cost/errors under
+  each cell, cost per task and tokens per task, the serving table
+  (quant/GPUs/memory/TTFT/tok/s/throughput/vs-API), retrieval results, the
+  **suspicious results** list, the derived keys with their notes, and the run
+  index (run folder, date, harness version, note) for every number shown.
+* `results/suspicious.json` - the same list as data.
+
+Suspicious-result rules: only a smoke run; error rate (timeouts + API errors
++ malformed tool calls) above `settings.suspicious_error_rate` (5%); a 0 or
+100 score on ≥5 tasks; no cost on a priced model (harness bypassed the proxy);
+any adapter warning; more than `sanity_threshold_pts` (3) from a published
+score; a self-hosted model more than `self_hosted_gap_pts` (5) below its API
+counterpart, or 20+ points below the baseline on a tool-calling bench (hint:
+chat template, `--tool-call-parser`, quantization).
+
 ## Commands
 
 ```bash
@@ -375,7 +413,7 @@ benchlab runs                             # list run folders and their status
 benchlab usage                            # tokens / cost / latency / error rates per model
 benchlab run --model all --bench ttft      # TTFT probe, every model (stage 1)
 benchlab run --model all --bench serving   # serving benchmark, self-hosted models only
-benchlab report                           # stage 8
+benchlab report [--out report.html] [--no-smoke]   # report.html + results/tracker.json + results/suspicious.json
 ```
 
 `--model all` means every chat model. `--stage N` runs that stage's benches for

@@ -270,7 +270,7 @@ _reg(
         "core suite",
         adapter=None,
         only_models=("step5",),
-        notes="aggregate of core on step5",
+        notes="computed by `benchlab report`: mean of core scores on step5",
     )
 )
 _reg(
@@ -283,7 +283,7 @@ _reg(
         "core suite",
         adapter=None,
         only_models=("step5self",),
-        notes="aggregate of core on step5self",
+        notes="computed by `benchlab report`: mean of core scores on step5self (+ gap vs step5)",
     )
 )
 _reg(
@@ -296,6 +296,7 @@ _reg(
         "usage logs",
         adapter=None,
         only_models=("step5", "step5self"),
+        notes="computed by `benchlab report`: output tokens per task, self-hosted vs API",
     )
 )
 _reg(
@@ -321,6 +322,7 @@ _reg(
         "usage logs",
         adapter=None,
         only_models=("dsflash",),
+        notes="computed by `benchlab report`: USD per solved core task",
     )
 )
 _reg(
@@ -333,6 +335,7 @@ _reg(
         "usage logs",
         adapter=None,
         only_models=("dsflash",),
+        notes="computed by `benchlab report`: wall seconds per solved core task",
     )
 )
 _reg(
@@ -391,7 +394,7 @@ _reg(
         "core suite",
         adapter=None,
         only_models=("gptoss",),
-        notes="computed from core results",
+        notes="computed by `benchlab report`: worst deviation vs `published` scores",
     )
 )
 
