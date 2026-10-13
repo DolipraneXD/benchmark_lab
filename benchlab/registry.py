@@ -28,6 +28,7 @@ class BenchInfo:
     needs_docker: bool = False
     notes: str = ""
     aliases: tuple[str, ...] = field(default_factory=tuple)
+    trials_default: int = 1  # used when --trials is not given (τ²: 3 for pass^k)
 
 
 BENCHES: dict[str, BenchInfo] = {}
@@ -76,6 +77,7 @@ _reg(
         "sierra-research/tau2-bench",
         adapter="benchlab.adapters.tau2:Tau2Airline",
         n_tasks_default=20,
+        trials_default=3,
         tokens_in_per_task=60000,
         tokens_out_per_task=3000,
         needs_docker=False,
@@ -91,6 +93,7 @@ _reg(
         "sierra-research/tau2-bench",
         adapter="benchlab.adapters.tau2:Tau2Retail",
         n_tasks_default=20,
+        trials_default=3,
         tokens_in_per_task=60000,
         tokens_out_per_task=3000,
     )
@@ -105,6 +108,7 @@ _reg(
         "sierra-research/tau2-bench",
         adapter="benchlab.adapters.tau2:Tau2Telecom",
         n_tasks_default=20,
+        trials_default=3,
         tokens_in_per_task=60000,
         tokens_out_per_task=3000,
     )

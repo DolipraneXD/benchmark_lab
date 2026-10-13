@@ -69,6 +69,8 @@ def make_app() -> FastAPI:
             blob = json.dumps(body["messages"])
             if "pong" in blob:
                 text = "pong"
+            elif "###STOP###" in blob:
+                text = "###STOP###"  # tau2 user simulator: end the conversation at once
             elif "ANSWER: $LETTER" in blob:
                 text = "Let me think. ANSWER: A"  # multiple-choice evals (GPQA)
             else:
@@ -265,6 +267,8 @@ models:
 
 
 @pytest.fixture(autouse=True)
-def _wide_terminal(monkeypatch):
+def _wide_terminal(monkeypatch, tmp_path):
     # rich truncates table cells in CliRunner's narrow pseudo-terminal
     monkeypatch.setenv("COLUMNS", "300")
+    # never let a test build or touch the real harness checkouts/venvs
+    monkeypatch.setenv("BENCHLAB_HARNESS_DIR", str(tmp_path / "harnesses"))

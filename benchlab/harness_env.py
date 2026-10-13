@@ -24,7 +24,8 @@ class HarnessInstallError(RuntimeError):
 
 
 def harness_root(name: str, root: Path | None = None) -> Path:
-    return (root or DEFAULT_ROOT) / name
+    # BENCHLAB_HARNESS_DIR is read at call time so tests can point it at a temp dir
+    return (root or Path(os.environ.get("BENCHLAB_HARNESS_DIR", "harnesses"))) / name
 
 
 def _uv() -> str:
@@ -51,7 +52,7 @@ def ensure_venv(
         try:
             have = json.loads(manifest.read_text())
             if have.get("python") == python and have.get("packages") == want["packages"]:
-                return venv / "bin"
+                return (venv / "bin").resolve()
         except json.JSONDecodeError:
             pass
     base.mkdir(parents=True, exist_ok=True)
@@ -90,7 +91,7 @@ def ensure_venv(
     manifest.write_text(
         json.dumps({**want, "installed": installed, "venv": str(venv)}, indent=2, sort_keys=True)
     )
-    return venv / "bin"
+    return (venv / "bin").resolve()
 
 
 def frozen_versions(bin_dir: Path, names: list[str] | None = None) -> dict[str, str]:
@@ -131,3 +132,90 @@ def run_python(
 
 def describe() -> str:  # pragma: no cover - convenience
     return f"harness envs under {DEFAULT_ROOT.resolve()} (python {sys.version_info.major}.{sys.version_info.minor} host)"
+
+
+def ensure_repo_env(
+    name: str,
+    url: str,
+    ref: str,
+    root: Path | None = None,
+    python: str = "3.12",
+    sync_args: list[str] | None = None,
+) -> tuple[Path, Path]:
+    """Clone ``url`` at ``ref`` into ``harnesses/<name>/repo`` and ``uv sync`` it
+    (the official install for repo-based harnesses such as tau2-bench). Returns
+    ``(repo_dir, venv_bin_dir)``. Re-clones when ``ref`` changes."""
+    base = harness_root(name, root)
+    repo = base / "repo"
+    manifest = base / "manifest.json"
+    venv_bin = repo / ".venv" / "bin"
+    if repo.exists() and manifest.exists():
+        try:
+            have = json.loads(manifest.read_text())
+            if have.get("url") == url and have.get("ref") == ref and (venv_bin / "python").exists():
+                return repo.resolve(), venv_bin.resolve()
+        except json.JSONDecodeError:
+            pass
+    if repo.exists():
+        shutil.rmtree(repo)
+    base.mkdir(parents=True, exist_ok=True)
+    uv = _uv()
+    env = dict(os.environ)
+    env.pop("VIRTUAL_ENV", None)
+    env["UV_PROJECT_ENVIRONMENT"] = ".venv"
+    try:
+        clone = subprocess.run(
+            ["git", "clone", "--quiet", "--depth", "1", "--branch", ref, url, str(repo)],
+            capture_output=True,
+            text=True,
+        )
+        if clone.returncode != 0:  # ``ref`` may be a commit sha: full clone then checkout
+            subprocess.run(
+                ["git", "clone", "--quiet", url, str(repo)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repo), "checkout", "--quiet", ref],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        subprocess.run(
+            [uv, "sync", "--quiet", "--python", python, *(sync_args or [])],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(repo),
+            env=env,
+        )
+    except subprocess.CalledProcessError as e:
+        raise HarnessInstallError(
+            f"failed to set up harness repo {name!r} at {ref}: {e.stderr.strip()[-2000:] or e.stdout.strip()[-2000:]}"
+        ) from e
+    commit = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
+    manifest.write_text(
+        json.dumps(
+            {
+                "url": url,
+                "ref": ref,
+                "commit": commit,
+                "python": python,
+                "installed": frozen_versions(venv_bin),
+                "venv": str(repo / ".venv"),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return repo.resolve(), venv_bin.resolve()
+
+
+def repo_commit(repo: Path) -> str | None:
+    out = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True
+    )
+    return out.stdout.strip() or None if out.returncode == 0 else None

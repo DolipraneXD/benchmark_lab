@@ -110,6 +110,9 @@ class Settings(BaseModel):
     tau2_user_model: str = "claude"
     tau2_user_model_params: dict[str, Any] = Field(default_factory=dict)
     grader_model: str | None = None  # LLM grader for model-graded benches (default: baseline)
+    tau2_ref: str = "v1.0.1"  # git tag/commit of sierra-research/tau2-bench to pin
+    tau2_tasks_per_domain: int = 20  # fixed seeded subset of the `base` split per domain
+    tau2_max_steps: int = 200  # tau2 default
     runs_dir: str = "runs"
     results_dir: str = "results"
 

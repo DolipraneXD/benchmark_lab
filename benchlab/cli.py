@@ -212,13 +212,14 @@ def _plan_rows(
     cfg: BenchConfig,
     specs: list[ModelSpec],
     benches: list[registry.BenchInfo],
-    trials: int,
+    trials: int | None,
     subset: str | None,
     smoke: bool,
 ):
     rows = []
     for b in benches:
         adapter_cls = registry.load_adapter(b)
+        k = trials if trials is not None else (b.trials_default or 1)
         for m in specs:
             if not registry.applies_to(b, m):
                 continue
@@ -226,7 +227,7 @@ def _plan_rows(
             notes = []
             if adapter_cls is not None:
                 try:
-                    plan = adapter_cls(cfg).plan(m, subset, trials, smoke)
+                    plan = adapter_cls(cfg).plan(m, subset, k, smoke)
                     n, tin, tout, notes = (
                         plan.n_tasks,
                         plan.est_tokens_in_per_task,
@@ -241,8 +242,8 @@ def _plan_rows(
                 if smoke:
                     n = min(n or 3, 3)
                 notes = ["adapter not integrated yet"]
-            est = m.cost_usd(tin * n * trials, tout * n * trials) if n else None
-            rows.append((m, b, adapter_cls, n, trials, est, notes))
+            est = m.cost_usd(tin * n * k, tout * n * k) if n else None
+            rows.append((m, b, adapter_cls, n, k, est, notes))
     return rows
 
 
@@ -254,7 +255,9 @@ def run(
         None, "--suite", help="core | coder | extras | retrieval | serving"
     ),
     stage: int | None = typer.Option(None, "--stage", help="1-4"),
-    trials: int = typer.Option(1, help="trials per task (pass^k for τ²)"),
+    trials: int | None = typer.Option(
+        None, help="trials per task (default: bench default; τ² uses 3 for pass^k)"
+    ),
     subset: str | None = typer.Option(None, help="subset name/size understood by the adapter"),
     budget_usd: float | None = typer.Option(
         None, "--budget-usd", help="abort cleanly past this spend"
@@ -310,13 +313,13 @@ def run(
         raise typer.Exit(0)
 
     rc = 0
-    for m, b, adapter_cls, _n, _k, _est, _notes in rows:
+    for m, b, adapter_cls, _n, k, _est, _notes in rows:
         if adapter_cls is None:
             console.print(
                 f"[yellow]skip[/yellow] {m.id} x {b.key}: adapter not integrated yet ({b.notes or b.harness})"
             )
             continue
-        rc |= _run_one(cfg, m, b, adapter_cls, trials, subset, smoke, budget_usd, resume)
+        rc |= _run_one(cfg, m, b, adapter_cls, k, subset, smoke, budget_usd, resume)
     raise typer.Exit(rc)
 
 

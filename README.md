@@ -11,7 +11,7 @@ Status by build stage:
 |---|-------|--------|
 | 1 | Skeleton, `models.yaml`, LiteLLM layer, `benchlab check`, cost/latency logging | **done** |
 | 2 | Inspect-based benches: GPQA Diamond, BFCL, GAIA/BrowseComp | **done** (proved end to end on BFCL; GPQA/GAIA need network/Docker not available in the build sandbox) |
-| 3 | τ²-bench | planned |
+| 3 | τ²-bench (airline, retail, telecom) | **done** (proved end to end on airline against a mock endpoint) |
 | 4 | Harbor: Terminal-Bench, SWE-bench (Docker) | planned |
 | 5 | Aider Polyglot, LiveCodeBench, RULER | planned |
 | 6 | Retrieval pipeline (MTEB, BEIR, own data) | planned |
@@ -150,6 +150,50 @@ host (`openaipublic.blob.core.windows.net`) and HuggingFace were not reachable
 from the build sandbox and Docker was not running, so GPQA/GAIA/BrowseComp are
 verified by command-building and parser tests only; run `--smoke` on them first.
 
+## Stage 3: τ²-bench (airline, retail, telecom)
+
+Harness: [`sierra-research/tau2-bench`](https://github.com/sierra-research/tau2-bench)
+pinned to tag **v1.0.1** (`settings.tau2_ref`), installed the official way - a
+git clone + `uv sync` under `harnesses/tau2/repo` (the PyPI package named
+`tau2` is an unrelated project). Bench keys `t2air`, `t2ret`, `t2tel`
+(`--stage 2`).
+
+* **Comparability warning.** The repo is now τ³-bench: v1.0.0 shipped 75+ task
+  fixes to airline/retail/banking. Scores from v1.x are therefore **not
+  comparable with τ²-era published numbers** (model cards, the 2025 paper); only
+  compare models run by BenchLab with the same `tau2_ref`. To reproduce the τ²
+  task set, set `tau2_ref` to the last pre-τ³ tag (`v0.2.0`) - note the CLI of
+  older tags may differ from what the adapter was written against.
+* **Fixed subset.** Default 20 tasks per domain (`settings.tau2_tasks_per_domain`)
+  drawn once with seed 20261013 from the `base` split (airline 50, retail 114,
+  telecom 114 tasks) and saved to `subsets/tau2_<domain>_20.json`; every model
+  gets the same ids. `--subset all` runs the whole base split, `--subset N`
+  another fixed size.
+* **Trials.** Default 3 (`trials_default` in the registry) so tau2 computes
+  pass^1, pass^2, pass^3; `--trials K` overrides. `result.json` holds every
+  pass^k, the tracker gets pass^1.
+* **User simulator.** Always `settings.tau2_user_model` (default `claude`),
+  with `settings.tau2_user_model_params` applied on top of that model's own
+  params (Claude: no temperature). It is recorded in `config.json`
+  (`harness.user_model`, `harness.user_llm_args`) and in every note. Both the
+  agent and the simulator go through the per-run proxy, so their tokens and
+  cost are logged separately: `cost_usd` is the model under test only,
+  `user_sim_cost_usd` is reported alongside.
+* **Scoring.** `pass^k`, average reward and termination counts come from tau2's
+  own `compute_metrics()`. tau2 excludes `infrastructure_error` simulations
+  from pass^k; BenchLab reports their count, plus timeouts / API errors /
+  abnormal terminations (`max_steps`, `too_many_errors`, …) separately and
+  warns when they exceed 2% / 30% of simulations.
+* **Resume.** tau2's `--auto-resume` continues from `raw/tau2_<domain>/results.json`.
+* **Smoke.** `--smoke` = 2 tasks, 1 trial, `--max-steps 20`.
+* Other fixed settings: `--seed 300` (tau2 default), `--max-steps 200`,
+  `--max-concurrency` = the model's `max_concurrency`.
+
+Cost: a τ² task is a long multi-turn conversation (tens of k input tokens per
+simulation). Rough estimate for Claude Sonnet 5.5: ~$0.15 per simulation ⇒ 3
+domains × 20 tasks × 3 trials ≈ $25-30 for the agent, plus a similar amount for
+the Claude user simulator *per evaluated model*.
+
 ## Commands
 
 ```bash
@@ -172,7 +216,7 @@ every model that has them; `--suite` and `--bench` intersect with it.
 | Stage | Command | What it runs |
 |---|---|---|
 | 1 | `benchlab run --model all --stage 1` | GPQA Diamond + BFCL (cheap; catches broken setups) |
-| 2 | `benchlab run --model all --stage 2 --trials 3` | τ²-bench airline/retail/telecom, 20 tasks/domain × 3 trials |
+| 2 | `benchlab run --model all --stage 2` | τ²-bench airline/retail/telecom, 20 tasks/domain × 3 trials (trials default to 3 for τ²) |
 | 3 | `benchlab run --model all --stage 3` | Terminal-Bench then SWE-bench Verified, fixed 50-task subset (seeded once, ids saved and reused) |
 | 4 | `benchlab run --model <ids> --stage 4` | full runs / extras, only for named models |
 
