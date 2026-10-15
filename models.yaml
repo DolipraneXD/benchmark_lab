@@ -23,29 +23,16 @@
 
 settings:
   profile: full                 # lite = same benches, ~1/5 of the cost (smaller fixed subsets; see README "Cheap mode")
-  baseline_model: claude            # every delta in the report is vs this id
+  baseline_model: ml4               # every delta in the report is vs this id
   litellm_proxy_port: 4000
   default_temperature: 0.0
   default_max_tokens: 4096
   request_timeout_s: 300
-  tau2_user_model: claude           # FIXED user simulator for τ²-bench, identical for every run
-  tau2_user_model_params: {temperature: null}
+  tau2_user_model: ml4              # FIXED user simulator for τ²-bench, identical for every run
+  tau2_user_model_params: {}
+  grader_model: dsflash             # BrowseComp grader; a model is never graded by itself
 
 models:
-  # ---- baseline -----------------------------------------------------------
-  - id: claude
-    name: Claude Sonnet 5.5
-    provider: anthropic
-    model: claude-sonnet-5-5
-    api_key_env: ANTHROPIC_API_KEY
-    price_in_per_mtok: 2.0
-    price_out_per_mtok: 10.0
-    max_concurrency: 8
-    # Sonnet 5.5 rejects non-default sampling params (temperature) with a 400 and
-    # runs adaptive thinking by default; both are recorded as per-model exceptions.
-    extra_params: {temperature: null}
-    suites: [core, coder]
-
   # ---- open / closed chat models -------------------------------------------
   - id: glm
     name: GLM-5.3
@@ -135,6 +122,7 @@ models:
     max_concurrency: 8
     extra_params: {}
     extras: [ml4_aider]
+    suites: [core, coder]                           # baseline also runs the coder suite (reference for qcoder)
 
   - id: laguna
     name: Laguna S 2.1

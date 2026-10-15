@@ -1,0 +1,118 @@
+# Trial registry: every chat model through xkiro.com (one OpenAI-compatible endpoint,
+# free tier ~1M tokens/day). Use it to try the pipeline end to end, NOT for the final
+# numbers: a reseller can't prove it serves the exact official weights/quantization,
+# and quota errors mid-run show up as API errors.
+#
+#   export XKIRO_API_KEY=...            # or put it in .env; never in this file
+#   curl -s https://api.xkiro.com/v1/models -H "Authorization: Bearer $XKIRO_API_KEY"
+#                                       # -> copy the exact ids into `model:` below
+#   uv run benchlab check -c models.xkiro.yaml -m all
+#   uv run benchlab run -c models.xkiro.yaml -m ml4 --stage 1 --smoke
+#
+# Token accounting: prices are set to 1.0/1.0, so "USD" in this file means
+# "millions of tokens". `--budget-usd 0.9` stops a run at ~0.9M tokens (under the
+# daily quota), and the report's cost column reads as Mtokens. Results go to
+# runs_xkiro/ and results_xkiro/ so they never mix with real runs.
+
+settings:
+  profile: lite
+  baseline_model: ml4
+  tau2_user_model: ml4
+  tau2_user_model_params: {}
+  grader_model: dsflash
+  runs_dir: runs_xkiro
+  results_dir: results_xkiro
+  default_temperature: 0.0
+  default_max_tokens: 4096
+  request_timeout_s: 300
+
+models:
+  - id: ml4
+    name: Mistral Large 4 (xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1              # TODO verify (screenshot shows api.xkiro.co…)
+    model: mistralai/mistral-large-4-0
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 1.0
+    price_out_per_mtok: 1.0
+    max_concurrency: 4
+    suites: [core, coder]
+    notes: via xkiro.com reseller, trial only
+
+  - id: glm
+    name: GLM-5.3 (xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: z-ai/glm-5.3                             # TODO verify id
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 1.0
+    price_out_per_mtok: 1.0
+    max_concurrency: 4
+    notes: via xkiro.com reseller, trial only
+
+  - id: dsflash
+    name: DeepSeek-V4.1-Flash (xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: deepseek/deepseek-v4.1-flash             # TODO verify id
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 1.0
+    price_out_per_mtok: 1.0
+    max_concurrency: 4
+    notes: via xkiro.com reseller, trial only
+
+  - id: gptoss
+    name: gpt-oss-120b (xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: openai/gpt-oss-120b                      # TODO verify id
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 1.0
+    price_out_per_mtok: 1.0
+    max_concurrency: 4
+    notes: via xkiro.com reseller (hosted, not our vLLM), trial only
+
+  - id: mimo
+    name: MiMo-V2.6-Pro (xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: xiaomi/mimo-v2.6-pro                     # TODO verify id
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 1.0
+    price_out_per_mtok: 1.0
+    max_concurrency: 4
+    notes: via xkiro.com reseller, trial only
+
+  - id: qwen27
+    name: Qwen3.8-27B (xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: qwen/qwen3.8-27b                         # TODO verify id
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 1.0
+    price_out_per_mtok: 1.0
+    max_concurrency: 4
+    notes: via xkiro.com reseller (hosted, not our vLLM), trial only
+
+  - id: step5
+    name: Step 5 Preview (xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: stepfun/step-5-preview                   # TODO verify id
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 1.0
+    price_out_per_mtok: 1.0
+    max_concurrency: 4
+    notes: via xkiro.com reseller, trial only
+
+  - id: qcoder
+    name: Qwen3-Coder-30B-A3B (xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: qwen/qwen3-coder-30b-a3b-instruct        # TODO verify id
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 1.0
+    price_out_per_mtok: 1.0
+    max_concurrency: 4
+    suites: [coder]
+    notes: via xkiro.com reseller (hosted, not our vLLM), trial only

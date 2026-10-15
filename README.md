@@ -3,7 +3,10 @@
 A command-line runner that executes a fixed benchmark suite against any model
 (API endpoint + model name + API key) and produces comparable, reproducible
 results. Every benchmark wraps its **official harness**; BenchLab never scores
-anything itself. Claude Sonnet 5.5 is the baseline every other model is compared to.
+anything itself. Mistral Large 4 (`ml4`) is the baseline every other model is compared to
+(`settings.baseline_model`); it also plays the τ²-bench user simulator, and
+`dsflash` grades BrowseComp. A model is never graded by itself: `benchlab run`
+refuses a model-graded bench when the model under test is the grader.
 
 Status by build stage:
 
@@ -172,7 +175,7 @@ git clone + `uv sync` under `harnesses/tau2/repo` (the PyPI package named
 * **Trials.** Default 3 (`trials_default` in the registry) so tau2 computes
   pass^1, pass^2, pass^3; `--trials K` overrides. `result.json` holds every
   pass^k, the tracker gets pass^1.
-* **User simulator.** Always `settings.tau2_user_model` (default `claude`),
+* **User simulator.** Always `settings.tau2_user_model` (`ml4` in models.yaml),
   with `settings.tau2_user_model_params` applied on top of that model's own
   params (Claude: no temperature). It is recorded in `config.json`
   (`harness.user_model`, `harness.user_llm_args`) and in every note. Both the
@@ -486,6 +489,28 @@ category mix); every note records the subset, and the report flags published
 comparisons on lite runs as deviations. Other savings that do not change the
 subsets: point `tau2_user_model` at a cheaper strong model, and run `--stage 1`
 on everything before paying for stages 2-3 on models that already look broken.
+
+## Trial run through xkiro.com (`models.xkiro.yaml`)
+
+`models.xkiro.yaml` points every chat model at one OpenAI-compatible reseller
+endpoint (xkiro.com, free tier ~1M tokens/day) so the whole pipeline can be tried
+with a single key (`XKIRO_API_KEY`). It uses `profile: lite` and writes to
+`runs_xkiro/` and `results_xkiro/`, so trial numbers never mix with real ones.
+
+```bash
+curl -s https://api.xkiro.com/v1/models -H "Authorization: Bearer $XKIRO_API_KEY"  # copy exact ids into model:
+uv run benchlab check -c models.xkiro.yaml -m all
+uv run benchlab run   -c models.xkiro.yaml -m ml4 --stage 1 --smoke
+uv run benchlab run   -c models.xkiro.yaml -m ml4 -b gpqa --budget-usd 0.9
+```
+
+Prices in that file are 1.0/1.0, so "USD" there means millions of tokens:
+`--budget-usd 0.9` stops a run at ~0.9M tokens, under the daily quota, and the run
+resumes the next day. Lite needs about 2.2M tokens per model for stage 1 and 1.9M
+for stage 2, so the free tier covers roughly one bench per model per day; stage 3
+(Terminal-Bench / SWE-bench) does not fit. Use these runs to test the setup, not
+for the decision: a reseller can't prove it serves the official weights, and
+quota errors surface as API errors in the error column.
 
 ## Commands
 

@@ -90,3 +90,19 @@ def test_lite_profile_overrides_only_unset_knobs(models_yaml, tmp_path):
     assert set(LITE_PROFILE) <= set(type(s).model_fields)
     full = load_config(models_yaml).settings
     assert full.bfcl_subset is None and full.tau2_trials is None and full.harbor_subset_size == 50
+
+
+def test_shipped_registries_have_no_claude_and_load():
+    from pathlib import Path
+
+    from benchlab.config import load_config
+
+    root = Path(__file__).resolve().parent.parent
+    for name in ("models.yaml", "models.xkiro.yaml"):
+        cfg = load_config(root / name, dotenv=False)
+        assert all(m.provider != "anthropic" for m in cfg.models)
+        assert cfg.settings.baseline_model == "ml4"
+        assert cfg.settings.grader_model != cfg.settings.baseline_model
+    x = load_config(root / "models.xkiro.yaml", dotenv=False)
+    assert x.settings.profile == "lite" and x.settings.runs_dir == "runs_xkiro"
+    assert {m.api_key_env for m in x.models} == {"XKIRO_API_KEY"}

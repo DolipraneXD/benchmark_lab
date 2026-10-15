@@ -25,3 +25,5 @@ harnesses/
 # retrieval data is user-supplied
 retrieval/docs/
 retrieval/queries.jsonl
+runs_xkiro/
+results_xkiro/

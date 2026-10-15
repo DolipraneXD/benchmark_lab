@@ -331,6 +331,13 @@ def _run_one(cfg, m, b, adapter_cls, trials, subset, smoke, budget_usd, resume) 
 
     adapter = adapter_cls(cfg)
     console.rule(f"{m.id} x {b.key}")
+    grader = getattr(adapter, "grader_id", None)
+    if grader is not None and grader() == m.id:
+        err.print(
+            f"[red]{b.key}: {m.id} is the grader model and cannot grade itself;[/red] "
+            "set settings.grader_model to another model for this run"
+        )
+        return 1
     try:
         harness = adapter.prepare()
     except HarnessNotReady as e:
