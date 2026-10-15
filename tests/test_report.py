@@ -293,3 +293,26 @@ def test_report_without_runs(models_yaml, tmp_path):
     t = json.loads((tmp_path / "results" / "tracker.json").read_text())
     assert all(v["v"] == "n/a" for v in t.values())  # only the not-integrated placeholders
     assert "nothing flagged" in (tmp_path / "empty.html").read_text()
+
+
+def test_reference_model_row_and_tracker(models_yaml, tmp_path):
+    from benchlab.config import ModelSpec
+
+    _, cfg = _cfg(models_yaml, tmp_path)
+    cfg.models.append(
+        ModelSpec(
+            id="refm",
+            name="Ref Model",
+            provider="anthropic",
+            model="r",
+            reference=True,
+            published={"gpqa": 91.0},
+        )
+    )
+    _populate(cfg)
+    rep = build_report(cfg, tmp_path / "report.html")
+    assert rep.tracker["refm__gpqa"]["v"] == "91.0"
+    assert "published" in rep.tracker["refm__gpqa"]["note"]
+    html = rep.html_path.read_text()
+    assert "<tr class='ref'><td>Ref Model" in html and "91.0<span class='sub'>published" in html
+    assert not any(s["model"] == "refm" for s in rep.suspicious)

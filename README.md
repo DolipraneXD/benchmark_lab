@@ -7,6 +7,11 @@ anything itself. Mistral Large 4 (`ml4`) is the baseline every other model is co
 (`settings.baseline_model`); it also plays the τ²-bench user simulator, and
 `dsflash` grades BrowseComp. A model is never graded by itself: `benchlab run`
 refuses a model-graded bench when the model under test is the grader.
+Claude Sonnet 5.5 is a **reference** model (`reference: true`): it is never called
+or benchmarked and needs no key. Its `published` scores (copied from Anthropic's
+model card) appear as an italic row in the report and as `claude__<bench>` in
+tracker.json, without deltas, because published numbers come from different
+harness settings and subsets.
 
 Status by build stage:
 

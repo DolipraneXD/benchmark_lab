@@ -76,6 +76,8 @@ def build_proxy_config(
             }
         )
     for m in cfg.models:
+        if m.reference:
+            continue  # published scores only, never called
         if m.kind == "reranker":
             continue  # /v1/rerank is called directly by the retrieval pipeline
         if m.kind == "embedding" and (not include_embeddings or m.base_url == "local"):

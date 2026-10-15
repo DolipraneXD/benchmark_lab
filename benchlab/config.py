@@ -44,6 +44,7 @@ class ModelSpec(BaseModel):
     tracker_id: str | None = None
     compare_to: str | None = None
     knowledge_cutoff: str | None = None  # YYYY-MM-DD; LiveCodeBench uses problems after it
+    reference: bool = False  # published scores only: shown in the report, never called or run
     serving: dict[str, Any] = Field(
         default_factory=dict
     )  # self-hosted: {quantization, gpus, gpu_mem_gb, nvidia_smi: local|ssh host}
@@ -60,6 +61,9 @@ class ModelSpec(BaseModel):
     def _provider_requirements(self) -> ModelSpec:
         if self.provider == "openai_compatible" and not self.base_url:
             raise ValueError(f"model {self.id}: openai_compatible needs base_url")
+        if self.reference:
+            self.suites = []
+            return self
         if self.provider in ("openai_compatible", "anthropic") and not self.api_key_env:
             raise ValueError(f"model {self.id}: {self.provider} needs api_key_env")
         for k in ("api_key", "key", "token"):
@@ -262,6 +266,11 @@ class BenchConfig(BaseModel):
         ):
             if ref is not None and ref not in seen:
                 raise ValueError(f"settings reference unknown model id {ref!r}")
+            if ref is not None and self.get(ref).reference:
+                raise ValueError(
+                    f"{ref!r} is a reference model (published scores only); "
+                    "baseline, user simulator and grader must be benchmarked models"
+                )
         for m in self.models:
             if m.compare_to and m.compare_to not in seen:
                 raise ValueError(f"model {m.id}: compare_to {m.compare_to!r} is unknown")
@@ -274,13 +283,23 @@ class BenchConfig(BaseModel):
         raise KeyError(f"unknown model id {model_id!r}; known: {[m.id for m in self.models]}")
 
     def chat_models(self) -> list[ModelSpec]:
-        return [m for m in self.models if m.kind == "chat"]
+        """Chat models that are benchmarked (reference models excluded)."""
+        return [m for m in self.models if m.kind == "chat" and not m.reference]
+
+    def reference_models(self) -> list[ModelSpec]:
+        return [m for m in self.models if m.reference]
 
     def select(self, selector: str) -> list[ModelSpec]:
-        """'all' -> every chat model; otherwise a comma-separated list of ids."""
+        """'all' -> every benchmarked chat model; otherwise a comma-separated list of ids."""
         if selector == "all":
             return self.chat_models()
-        return [self.get(x.strip()) for x in selector.split(",") if x.strip()]
+        out = [self.get(x.strip()) for x in selector.split(",") if x.strip()]
+        refs = [m.id for m in out if m.reference]
+        if refs:
+            raise ValueError(
+                f"{refs} are reference models (published scores only); not benchmarked"
+            )
+        return out
 
     @property
     def baseline(self) -> ModelSpec:

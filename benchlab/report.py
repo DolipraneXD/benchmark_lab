@@ -187,6 +187,12 @@ def build_tracker(cfg: BenchConfig, col: Collected) -> dict[str, dict[str, str]]
             if e.smoke and "SMOKE" not in note:
                 note += "; SMOKE"
             tracker[k] = {"v": str(v.get("v")), "note": note}
+    for m in cfg.reference_models():
+        for b, v in m.published.items():
+            tracker[f"{m.tracker}__{b}"] = {
+                "v": _f1(float(v)),
+                "note": "published score (reference model, not measured by BenchLab)",
+            }
     baseline = cfg.baseline
     for m in cfg.chat_models():
         tid = m.tracker
@@ -499,7 +505,7 @@ h1{margin:0 0 4px} h2{margin:32px 0 8px;font-size:1.15rem} .muted{color:#666;fon
 table{border-collapse:collapse;font-size:.85rem;margin-top:8px} th,td{border:1px solid #ddd;padding:4px 8px;text-align:right;vertical-align:top}
 th{background:#f3f3f3;position:sticky;top:0} td:first-child,th:first-child{text-align:left;font-weight:600;white-space:nowrap}
 .pos{color:#0a7a2f} .neg{color:#b3261e} .sub{display:block;color:#777;font-size:.72rem;font-weight:400}
-.base{background:#fbfbe6} .smoke{outline:2px dashed #e0a800} .na{color:#bbb}
+tr.ref td{font-style:italic;color:#555;background:#f7f7fb} .base{background:#fbfbe6} .smoke{outline:2px dashed #e0a800} .na{color:#bbb}
 ul.susp li{margin:4px 0} .hint{color:#555} code{background:#f3f3f3;padding:0 3px}
 .wrap{overflow-x:auto}
 """
@@ -568,7 +574,8 @@ def render_html(
         f"<h1>BenchLab report</h1><div class='muted'>generated {now} · benchlab {__version__} · baseline <b>{_esc(baseline.name)}</b> ({_esc(baseline.id)}) · "
         f"{len(col.entries)} (model, bench) results from {len(col.all_runs)} finished runs in <code>{_esc(cfg.settings.runs_dir)}</code>. "
         "Cells: score (delta vs baseline in points); n = tasks×trials, $ = run cost from the usage logs, err = timeouts+API errors+malformed tool calls. "
-        "Dashed outline = smoke run only.</div>",
+        "Dashed outline = smoke run only. Italic rows = reference models: published scores, "
+        "not measured by BenchLab and not comparable point-for-point (different harness settings and subsets).</div>",
     ]
     # ---- main table
     H.append("<h2>Scores: models × benchmarks</h2><div class='wrap'><table><tr><th>model</th>")
@@ -578,6 +585,18 @@ def render_html(
             f"<th title='{_esc(bi.harness if bi else '')}'>{_esc(bi.display if bi else b)}<span class='sub'>{_esc(b)}</span></th>"
         )
     H.append("<th>TTFT p50 s</th><th>core cost $</th></tr>")
+    for m in cfg.reference_models():  # published numbers, not measured here: no deltas
+        H.append(
+            f"<tr class='ref'><td>{_esc(m.name)}<span class='sub'>{_esc(m.id)} · reference, published</span></td>"
+        )
+        for b in score_benches:
+            v = m.published.get(b)
+            H.append(
+                "<td class=na>-</td>"
+                if v is None
+                else f"<td class='ref'>{float(v):.1f}<span class='sub'>published</span></td>"
+            )
+        H.append("<td class=na>-</td><td class=na>-</td></tr>")
     for m in chat:
         is_base = m.id == baseline.id
         H.append(

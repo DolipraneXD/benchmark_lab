@@ -92,7 +92,7 @@ def test_lite_profile_overrides_only_unset_knobs(models_yaml, tmp_path):
     assert full.bfcl_subset is None and full.tau2_trials is None and full.harbor_subset_size == 50
 
 
-def test_shipped_registries_have_no_claude_and_load():
+def test_shipped_registries_keep_claude_as_reference_only():
     from pathlib import Path
 
     from benchlab.config import load_config
@@ -100,9 +100,49 @@ def test_shipped_registries_have_no_claude_and_load():
     root = Path(__file__).resolve().parent.parent
     for name in ("models.yaml", "models.xkiro.yaml"):
         cfg = load_config(root / name, dotenv=False)
-        assert all(m.provider != "anthropic" for m in cfg.models)
+        claude = cfg.get("claude")
+        assert claude.reference and claude not in cfg.chat_models()
+        assert all(m.provider != "anthropic" for m in cfg.chat_models())
         assert cfg.settings.baseline_model == "ml4"
         assert cfg.settings.grader_model != cfg.settings.baseline_model
     x = load_config(root / "models.xkiro.yaml", dotenv=False)
     assert x.settings.profile == "lite" and x.settings.runs_dir == "runs_xkiro"
-    assert {m.api_key_env for m in x.models} == {"XKIRO_API_KEY"}
+    assert {m.api_key_env for m in x.chat_models()} == {"XKIRO_API_KEY"}
+
+
+def test_reference_model_is_never_run_or_proxied(tmp_path):
+    import pytest
+
+    from benchlab.config import BenchConfig
+    from benchlab.proxy import build_proxy_config
+
+    raw = {
+        "settings": {"baseline_model": "a", "tau2_user_model": "a"},
+        "models": [
+            {
+                "id": "a",
+                "name": "A",
+                "provider": "openai_compatible",
+                "base_url": "http://x/v1",
+                "model": "a",
+                "api_key_env": "A_KEY",
+            },
+            {
+                "id": "ref",
+                "name": "Ref",
+                "provider": "anthropic",
+                "model": "r",
+                "reference": True,
+                "published": {"gpqa": 80.0},
+            },
+        ],
+    }
+    cfg = BenchConfig.model_validate(raw)
+    assert [m.id for m in cfg.select("all")] == ["a"]
+    with pytest.raises(ValueError, match="reference"):
+        cfg.select("ref")
+    names = [e["model_name"] for e in build_proxy_config(cfg)["model_list"]]
+    assert "ref" not in names
+    bad = dict(raw, settings={"baseline_model": "ref", "tau2_user_model": "a"})
+    with pytest.raises(ValueError, match="reference model"):
+        BenchConfig.model_validate(bad)

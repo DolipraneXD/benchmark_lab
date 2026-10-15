@@ -94,8 +94,10 @@ def models(
             f"{m.price_in_per_mtok:g}/{m.price_out_per_mtok:g}" if m.has_prices else "n/a",
             str(m.max_concurrency),
             ",".join(m.suites or []),
-            ",".join(m.extras),
-            json.dumps(per_model_exceptions(m, cfg.settings)) if m.kind == "chat" else "",
+            ",".join(m.extras) if not m.reference else "reference: published scores only",
+            json.dumps(per_model_exceptions(m, cfg.settings))
+            if m.kind == "chat" and not m.reference
+            else "",
         ]
         if keys:
             row.append(
@@ -118,7 +120,11 @@ def check(
     from benchlab.check import run_check
 
     cfg = _cfg(config)
-    specs = cfg.select(model)
+    try:
+        specs = cfg.select(model)
+    except (KeyError, ValueError) as e:
+        err.print(f"[red]{e.args[0] if e.args else e}[/red]")
+        raise typer.Exit(2) from None
     log = UsageLog(Path(cfg.settings.runs_dir) / "checks.jsonl")
     failed = 0
     for spec in specs:
@@ -271,7 +277,11 @@ def run(
 ) -> None:
     """Run benchmarks. Every run writes runs/<timestamp>_<model>_<bench>/."""
     cfg = _cfg(config)
-    specs = cfg.select(model)
+    try:
+        specs = cfg.select(model)
+    except (KeyError, ValueError) as e:
+        err.print(f"[red]{e.args[0] if e.args else e}[/red]")
+        raise typer.Exit(2) from None
     try:
         benches = registry.select_benches(bench, suite, stage)
     except (KeyError, ValueError) as e:

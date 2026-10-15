@@ -27,6 +27,17 @@ settings:
   request_timeout_s: 300
 
 models:
+  # ---- reference only (never called, never benchmarked) ---------------------
+  - id: claude
+    name: Claude Sonnet 5.5
+    reference: true                                 # published scores only; shown as an italic row in the report
+    provider: anthropic
+    model: claude-sonnet-5-5
+    # Copy from Anthropic's model card / system card. Keys are bench ids
+    # (gpqa, bfcl, t2air, t2ret, t2tel, tb, swe, gaia, lcb, aider). Published
+    # numbers use their own harness settings, so they are context, not a delta.
+    published: {}   # e.g. {gpqa: 0.0, swe: 0.0}
+
   - id: ml4
     name: Mistral Large 4 (xkiro)
     provider: openai_compatible
