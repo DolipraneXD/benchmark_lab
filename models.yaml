@@ -23,7 +23,7 @@
 #   notes              free text, copied into every run's config.json
 
 settings:
-  profile: full                 # lite = same benches, ~1/5 of the cost (smaller fixed subsets; see README "Cheap mode")
+  profile: lite                 # lite = same benches, ~1/5 of the cost (smaller fixed subsets; see README "Cheap mode")
   baseline_model: ml4               # every delta in the report is vs this id
   litellm_proxy_port: 4000
   default_temperature: 0.0
@@ -135,6 +135,17 @@ models:
     extra_params: {}
     extras: [ml4_aider]
     suites: [core, coder]                           # baseline also runs the coder suite (reference for qcoder)
+
+  - id: mistral_xkiro
+    name: Mistral Large 4 (Xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: mistralai/mistral-large-4-0
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 0.0
+    price_out_per_mtok: 0.0
+    max_concurrency: 4
+    extra_params: {}
 
   - id: laguna
     name: Laguna S 2.1
