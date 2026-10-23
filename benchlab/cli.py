@@ -273,6 +273,9 @@ def run(
     dry_run: bool = typer.Option(False, "--dry-run", help="print the plan and estimated cost only"),
     smoke: bool = typer.Option(False, "--smoke", help="2-3 tasks per bench"),
     resume: bool = typer.Option(True, help="continue the newest unfinished run for (model, bench)"),
+    preflight: bool = typer.Option(
+        True, help="one tiny request per model first; skip models whose endpoint/key/plan fails"
+    ),
     config: str | None = ConfigOpt,
 ) -> None:
     """Run benchmarks. Every run writes runs/<timestamp>_<model>_<bench>/."""
@@ -325,7 +328,15 @@ def run(
         raise typer.Exit(0)
 
     rc = 0
+    dead: dict[str, str] = _preflight(cfg, rows) if preflight else {}
     for m, b, adapter_cls, _n, k, _est, _notes in rows:
+        blocker = dead.get(m.id) or next(
+            (f"{h} ({dead[h]})" for h in _helper_models(cfg, b) if h in dead), None
+        )
+        if adapter_cls is not None and blocker:
+            err.print(f"[red]skip {m.id} x {b.key}:[/red] preflight failed for {blocker}")
+            rc |= 1
+            continue
         if adapter_cls is None:
             console.print(
                 f"[yellow]skip[/yellow] {m.id} x {b.key}: adapter not integrated yet ({b.notes or b.harness})"
@@ -333,6 +344,49 @@ def run(
             continue
         rc |= _run_one(cfg, m, b, adapter_cls, k, subset, smoke, budget_usd, resume)
     raise typer.Exit(rc)
+
+
+def _helper_models(cfg: BenchConfig, b) -> list[str]:
+    """Models a bench calls besides the one under test (tau2 user simulator, grader)."""
+    if b.key.startswith("t2"):
+        return [cfg.settings.tau2_user_model]
+    if b.key == "bcomp":
+        return [cfg.settings.grader_model or cfg.settings.baseline_model]
+    return []
+
+
+def _preflight(cfg: BenchConfig, rows) -> dict[str, str]:
+    """One tiny chat request per chat model involved, so a missing plan, bad key or
+    wrong model name stops before a whole bench of failed tasks. Returns {id: error}."""
+    from benchlab.llm import LLMClient
+
+    ids: list[str] = []
+    for m, b, adapter_cls, *_ in rows:
+        if adapter_cls is None:
+            continue
+        for mid in [m.id, *_helper_models(cfg, b)]:
+            if mid not in ids and cfg.get(mid).kind == "chat":
+                ids.append(mid)
+    client = LLMClient(
+        cfg.settings,
+        usage_log=UsageLog(Path(cfg.settings.runs_dir) / "checks.jsonl"),
+        num_retries=0,
+    )
+    dead: dict[str, str] = {}
+    for mid in ids:
+        res = client.complete(
+            cfg.get(mid),
+            [{"role": "user", "content": "Reply with the word OK."}],
+            call_type="preflight",
+            timeout=min(60.0, cfg.settings.request_timeout_s),
+            max_tokens=32,
+        )
+        if res.ok:
+            console.print(f"preflight {mid}: ok ({res.latency_s:.1f}s)")
+        else:
+            dead[mid] = redact(f"{res.error_type}: {res.error_msg}")[:300]
+            err.print(f"[red]preflight {mid} failed:[/red] {dead[mid]}")
+    return dead
 
 
 def _run_one(cfg, m, b, adapter_cls, trials, subset, smoke, budget_usd, resume) -> int:

@@ -509,6 +509,11 @@ uv run benchlab run   -c models.xkiro.yaml -m ml4 --stage 1 --smoke
 uv run benchlab run   -c models.xkiro.yaml -m ml4 -b gpqa --budget-usd 0.9
 ```
 
+`benchlab run` first sends one tiny request to every model it will call (the model
+under test plus τ²'s user simulator or BrowseComp's grader) and skips that model's
+benches when it fails, e.g. "This is a paid model" on a free plan, so a bench never
+fills up with failed tasks. `--no-preflight` turns it off.
+
 Prices in that file are 1.0/1.0, so "USD" there means millions of tokens:
 `--budget-usd 0.9` stops a run at ~0.9M tokens, under the daily quota, and the run
 resumes the next day. Lite needs about 2.2M tokens per model for stage 1 and 1.9M

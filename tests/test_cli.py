@@ -26,7 +26,9 @@ def test_run_dry_run_and_not_integrated(models_yaml):
     assert r.exit_code == 0, r.output
     assert "gpqa" in r.output and "bfcl" in r.output and "estimated total" in r.output
     r = runner.invoke(app, ["run", "-m", "all", "--bench", "mimo_tool", "-c", str(models_yaml)])
-    assert r.exit_code == 1, r.output  # every bench has an adapter now; Toolathlon refuses without Docker
+    assert r.exit_code == 1, (
+        r.output
+    )  # every bench has an adapter now; Toolathlon refuses without Docker
     assert "harness not ready" in r.output
     r = runner.invoke(app, ["run", "-m", "mock", "-c", str(models_yaml)])
     assert r.exit_code == 2  # no selector
@@ -37,3 +39,17 @@ def test_proxy_config_cli(models_yaml, tmp_path):
     r = runner.invoke(app, ["proxy-config", "-c", str(models_yaml), "--out", str(out)])
     assert r.exit_code == 0, r.output
     assert out.exists() and "os.environ/MOCK_API_KEY" in out.read_text()
+
+
+def test_preflight_skips_a_model_whose_endpoint_fails(models_yaml, tmp_path):
+    r = runner.invoke(
+        app, ["run", "-m", "broken", "--bench", "ttft", "--smoke", "-c", str(models_yaml)]
+    )
+    assert r.exit_code == 1, r.output
+    assert "preflight broken failed" in r.output and "skip broken x ttft" in r.output
+    assert not list((tmp_path / "runs").glob("*_broken_ttft"))  # no run of failed tasks
+    assert "sk-mock" not in r.output
+    r = runner.invoke(
+        app, ["run", "-m", "mock", "--bench", "ttft", "--smoke", "-c", str(models_yaml)]
+    )
+    assert r.exit_code == 0 and "preflight mock: ok" in r.output, r.output
