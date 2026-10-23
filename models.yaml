@@ -147,6 +147,17 @@ models:
     max_concurrency: 4
     extra_params: {}
 
+  - id: minimax_xkiro
+    name: MiniMax M3.1 Flash (Xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: minimax/minimax-m3.1-flash
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 0.15                         # xkiro price page (paid plan / top-up)
+    price_out_per_mtok: 0.60
+    max_concurrency: 4
+    extra_params: {}
+
   - id: laguna
     name: Laguna S 2.1
     provider: openai_compatible

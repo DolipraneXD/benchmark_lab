@@ -9,8 +9,9 @@
 #   uv run benchlab check -c models.xkiro.yaml -m all
 #   uv run benchlab run -c models.xkiro.yaml -m ml4 --stage 1 --smoke
 #
-# Token accounting: prices are set to 1.0/1.0, so "USD" in this file means
-# "millions of tokens". `--budget-usd 0.9` stops a run at ~0.9M tokens (under the
+# Token accounting: prices of 1.0/1.0 mean "USD" = "millions of tokens" for that
+# model (free-tier quota). Models xkiro bills (paid plan / top-up) carry their real
+# prices instead, e.g. minimax below. `--budget-usd 0.9` stops a run at ~0.9M tokens (under the
 # daily quota), and the report's cost column reads as Mtokens. Results go to
 # runs_xkiro/ and results_xkiro/ so they never mix with real runs.
 
@@ -127,3 +128,17 @@ models:
     max_concurrency: 4
     suites: [coder]
     notes: via xkiro.com reseller (hosted, not our vLLM), trial only
+
+  - id: minimax
+    name: MiniMax M3.1 Flash (xkiro)
+    provider: openai_compatible
+    base_url: https://api.xkiro.com/v1
+    model: minimax/minimax-m3.1-flash
+    api_key_env: XKIRO_API_KEY
+    price_in_per_mtok: 0.15                         # xkiro price page; paid plan or top-up required
+    price_out_per_mtok: 0.60
+    max_concurrency: 4
+    # Reasoning effort defaults to max (expect many output tokens). To pin it, add
+    # e.g. {reasoning_effort: high}; it is recorded as a per-model exception.
+    extra_params: {}
+    notes: via xkiro.com reseller, trial only
