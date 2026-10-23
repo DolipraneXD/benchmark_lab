@@ -1,0 +1,14 @@
+{
+  "name": "tau2_telecom_5",
+  "n": 5,
+  "seed": 20261013,
+  "pool_size": 114,
+  "source": "tau2-bench v1.0.1 telecom base split",
+  "ids": [
+    "[mms_issue]bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_storage_permission|data_mode_off|data_usage_exceeded|unseat_sim_card[PERSONA:Easy]",
+    "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+    "[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_disabled_on[PERSONA:None]",
+    "[mobile_data_issue]bad_vpn|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+    "[service_issue]lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]"
+  ]
+}

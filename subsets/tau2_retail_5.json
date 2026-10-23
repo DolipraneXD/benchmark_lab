@@ -1,0 +1,14 @@
+{
+  "name": "tau2_retail_5",
+  "n": 5,
+  "seed": 20261013,
+  "pool_size": 114,
+  "source": "tau2-bench v1.0.1 retail base split",
+  "ids": [
+    "18",
+    "49",
+    "62",
+    "67",
+    "98"
+  ]
+}
