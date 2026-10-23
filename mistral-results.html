@@ -1,0 +1,155 @@
+<!doctype html><html lang='en'><head><meta charset='utf-8'><title>BenchLab report</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:24px;color:#1b1b1b;background:#fff}
+h1{margin:0 0 4px} h2{margin:32px 0 8px;font-size:1.15rem} .muted{color:#666;font-size:.9rem}
+table{border-collapse:collapse;font-size:.85rem;margin-top:8px} th,td{border:1px solid #ddd;padding:4px 8px;text-align:right;vertical-align:top}
+th{background:#f3f3f3;position:sticky;top:0} td:first-child,th:first-child{text-align:left;font-weight:600;white-space:nowrap}
+.pos{color:#0a7a2f} .neg{color:#b3261e} .sub{display:block;color:#777;font-size:.72rem;font-weight:400}
+.base{background:#fbfbe6} .smoke{outline:2px dashed #e0a800} .na{color:#bbb}
+ul.susp li{margin:4px 0} .hint{color:#555} code{background:#f3f3f3;padding:0 3px}
+.wrap{overflow-x:auto}
+</style></head><body>
+<h1>BenchLab report</h1><div class='muted'>generated 2026-10-22 11:21 UTC · benchlab 0.1.0 · baseline <b>Claude Sonnet 5.5</b> (claude) · 3 (model, bench) results from 4 finished runs in <code>runs</code>. Cells: score (delta vs baseline in points); n = tasks×trials, $ = run cost from the usage logs, err = timeouts+API errors+malformed tool calls. Dashed outline = smoke run only.</div>
+<h2>Scores: models × benchmarks</h2><div class='wrap'><table><tr><th>model</th>
+<th title='inspect_evals/bfcl'>BFCL<span class='sub'>bfcl</span></th>
+<th title='harbor/terminal-bench'>Terminal-Bench 2.x<span class='sub'>tb</span></th>
+<th>TTFT p50 s</th><th>core cost $</th></tr>
+<tr><td class=base>Claude Sonnet 5.5<span class='sub'>claude</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>GLM-5.3<span class='sub'>glm</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>DeepSeek-V4.1-Flash<span class='sub'>dsflash</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>gpt-oss-120b<span class='sub'>gptoss · self-hosted</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>MiMo-V2.6-Pro<span class='sub'>mimo</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>Qwen3.8-27B<span class='sub'>qwen27 · self-hosted</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>Mistral Large 4<span class='sub'>ml4</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>Mistral Large 4 (Xkiro)<span class='sub'>mistral_xkiro</span></td>
+<td class="smoke">100.0<span class="sub">n=3 SMOKE</span></td>
+<td class="smoke">0.0<span class="sub">n=2 err=2 SMOKE</span></td>
+<td class="">0.96<span class="sub">n=10×3</span></td>
+<td><span class=na>-</span></td></tr>
+<tr><td>Laguna S 2.1<span class='sub'>laguna · self-hosted</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>Step 5 Preview (API)<span class='sub'>step5</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>Step 5 Preview (self-hosted weights)<span class='sub'>step5self · self-hosted</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+<tr><td>Qwen3-Coder-30B-A3B<span class='sub'>qcoder · self-hosted</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td><span class=na>-</span></td></tr>
+</table></div>
+<h2>Cost per task (USD per task-attempt) and tokens</h2><div class='wrap'><table><tr><th>model</th>
+<th>bfcl</th>
+<th>tb</th>
+</tr>
+<tr><td>claude</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>glm</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>dsflash</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>gptoss</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>mimo</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>qwen27</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>ml4</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>mistral_xkiro</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>laguna</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>step5</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>step5self</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>qcoder</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+</table></div>
+<h2>Suspicious results (4)</h2>
+<ul class='susp'>
+<li><b>mistral_xkiro</b> / bfcl: only a --smoke run exists (2-3 tasks) <span class='hint'>→ run the full bench before comparing</span> <span class='muted'>[20261021-091427_mistral_xkiro_bfcl]</span></li>
+<li><b>mistral_xkiro</b> / tb: only a --smoke run exists (2-3 tasks) <span class='hint'>→ run the full bench before comparing</span> <span class='muted'>[20261022-092825_mistral_xkiro_tb]</span></li>
+<li><b>mistral_xkiro</b> / tb: error rate 100%: timeouts 0, API errors 2, malformed tool calls 0 <span class='hint'>→ errored tasks count as failed; fix the endpoint / raise timeouts and re-run</span> <span class='muted'>[20261022-092825_mistral_xkiro_tb]</span></li>
+<li><b>mistral_xkiro</b> / tb: adapter warning: 2/2 trials errored (timeouts/API/environment): counted as unsolved; check the endpoint and Docker resources before trusting the score <span class='muted'>[20261022-092825_mistral_xkiro_tb]</span></li>
+</ul>
+<h2>Derived tracker keys</h2><div class='wrap'><table><tr><th>key</th><th>value</th><th>note</th></tr>
+<tr><td>dsflash__ds_cps</td><td>n/a</td><td style='text-align:left'>no solved core tasks yet</td></tr>
+<tr><td>dsflash__ds_lps</td><td>n/a</td><td style='text-align:left'>no solved core tasks yet</td></tr>
+<tr><td>gptoss__gpt_sanity</td><td>n/a</td><td style='text-align:left'>fill `published: {bench: score}` on the model in models.yaml to enable the sanity check</td></tr>
+<tr><td>gptoss__srv_match</td><td>n/a</td><td style='text-align:left'>set compare_to (API counterpart id) or published scores on the model to compute the gap</td></tr>
+<tr><td>laguna__srv_match</td><td>n/a</td><td style='text-align:left'>vs published scores (no API counterpart configured via compare_to); no results yet for published benches [&#x27;lag_tb21&#x27;]</td></tr>
+<tr><td>qcoder__srv_match</td><td>n/a</td><td style='text-align:left'>set compare_to (API counterpart id) or published scores on the model to compute the gap</td></tr>
+<tr><td>qwen27__srv_match</td><td>n/a</td><td style='text-align:left'>set compare_to (API counterpart id) or published scores on the model to compute the gap</td></tr>
+<tr><td>step5__s5_api</td><td>n/a</td><td style='text-align:left'>no core results yet shared with step5self</td></tr>
+<tr><td>step5__s5_self</td><td>n/a</td><td style='text-align:left'>no core results yet shared with step5</td></tr>
+<tr><td>step5__s5_tok</td><td>n/a</td><td style='text-align:left'>no core results yet</td></tr>
+<tr><td>step5__srv_match</td><td>n/a</td><td style='text-align:left'>no core bench has results for both step5self and step5 yet</td></tr>
+</table></div>
+<h2>Runs used</h2><div class='wrap'><table><tr><th>model</th><th>bench</th><th>run</th><th>date</th><th>harness</th><th>primary</th><th>note</th></tr>
+<tr><td>mistral_xkiro</td><td>bfcl</td><td style='text-align:left'><code>20261021-091427_mistral_xkiro_bfcl</code></td><td>2026-10-21</td><td style='text-align:left'>inspect_evals </td><td>100.00</td><td style='text-align:left'>inspect_evals 0.24.0 bfcl, 3 q, temp 0.0, 1 trial, SMOKE, categories=smoke, sample-weighted overall; per-category in result.json</td></tr>
+<tr><td>mistral_xkiro</td><td>tb</td><td style='text-align:left'><code>20261022-092825_mistral_xkiro_tb</code></td><td>2026-10-22</td><td style='text-align:left'>harbor </td><td>0.00</td><td style='text-align:left'>harbor 0.24.0 terminal-bench@2.0, agent terminus-2, fixed subset of 2 (seed 20261013), 1 attempt, temp 0.0, max_tokens harness default; errored trials count as unsolved; SMOKE</td></tr>
+<tr><td>mistral_xkiro</td><td>ttft</td><td style='text-align:left'><code>20261021-080715_mistral_xkiro_ttft</code></td><td>2026-10-21</td><td style='text-align:left'>benchlab-ttft </td><td>0.96</td><td style='text-align:left'>benchlab TTFT probe: 10 fixed prompts x 3 streamed repeats, max_tokens 64, 1 warm-up excluded, p50 seconds (p95 in result.json); via https://api.xkiro.com/v1</td></tr>
+</table></div></body></html>

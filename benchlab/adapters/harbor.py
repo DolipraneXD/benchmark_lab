@@ -272,12 +272,20 @@ class HarborAdapter(BenchAdapter):
         return [exe, "job", "resume", "-p", str(job_dir)]
 
     def job_dir(self, run_dir: RunDir) -> Path:
-        return run_dir.raw_dir / "jobs" / self.job_name()
+        raw = run_dir.raw_dir.resolve()
+        job = raw / "jobs" / self.job_name()
+        # Older BenchLab runs passed a path relative to ``raw`` and then ran
+        # Harbor with ``cwd=raw``. Harbor therefore created this nested path.
+        # Keep those jobs resumable while new runs use the canonical path.
+        legacy_job = raw / "runs" / run_dir.path.name / "raw" / "jobs" / self.job_name()
+        if not (job / "config.json").exists() and (legacy_job / "config.json").exists():
+            return legacy_job
+        return job
 
     # -- run / parse -------------------------------------------------------------------
     def run(self, model, run_dir, subset, trials, smoke, budget: BudgetGuard | None = None) -> Path:
         bin_dir = self.harness_bin()
-        raw = run_dir.raw_dir
+        raw = run_dir.raw_dir.resolve()
         job_dir = self.job_dir(run_dir)
         with ProxyProcess(self.cfg, raw, run_dir.path / RunDir.USAGE) as proxy:
             if (job_dir / "config.json").exists():
