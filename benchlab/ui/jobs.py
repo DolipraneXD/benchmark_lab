@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import signal
 import subprocess
@@ -188,12 +189,47 @@ def run_dir_for(runs_dir: str | Path, job: Job, model_id: str, bench: str) -> Ru
     return None
 
 
+# `benchlab run` prints a rule line before each pair: "──── <model> x <bench> ────"
+PAIR_RULE = re.compile(r"^─+ (\S+) x (\S+) ─+$")
+
+
+def pair_messages(
+    runs_dir: str | Path, job: Job, max_lines: int = 12
+) -> dict[tuple[str, str], str]:
+    """What the log says under each pair's heading, up to its run folder line. For a pair
+    that never got a run folder this is why it was skipped (missing key, grader, ...)."""
+    _, log, _ = _paths(runs_dir, job.id)
+    if not log.exists():
+        return {}
+    out: dict[tuple[str, str], list[str]] = {}
+    cur: list[str] | None = None
+    with open(log, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.rstrip()
+            m = PAIR_RULE.match(line.strip())
+            if m:
+                cur = out.setdefault((m.group(1), m.group(2)), [])
+                continue
+            if cur is None or not line.strip():
+                continue
+            if line.startswith(("run dir:", "resuming ")):
+                cur = None  # the pair started; its progress comes from the run folder
+                continue
+            if len(cur) < max_lines:
+                cur.append(line.strip())  # rich wraps at 80 columns: rejoin with spaces
+    return {k: " ".join(v) for k, v in out.items() if v}
+
+
 def progress(runs_dir: str | Path, job: Job) -> list[dict[str, Any]]:
-    """Per (model, bench): done / planned tasks, usage so far, result when finished."""
+    """Per (model, bench): done / planned tasks, usage so far, result when finished.
+    A pair the log has a heading for but no run folder was skipped; ``skipped`` says why."""
     rows = []
+    notes = pair_messages(runs_dir, job)
     for model_id, bench in job.pairs:
         rd = run_dir_for(runs_dir, job, model_id, bench)
         row: dict[str, Any] = {"model": model_id, "bench": bench, "run": None}
+        if rd is None and (model_id, bench) in notes:
+            row["skipped"] = notes[(model_id, bench)]
         if rd is not None:
             cfg = rd.read_config() if (rd.path / RunDir.CONFIG).exists() else {}
             st = rd.state()

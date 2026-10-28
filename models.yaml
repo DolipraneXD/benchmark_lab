@@ -24,29 +24,22 @@
 
 settings:
   profile: lite                 # lite = same benches, ~1/5 of the cost (smaller fixed subsets; see README "Cheap mode")
-  baseline_model: ml4               # every delta in the report is vs this id
+  baseline_model: minimax           # every delta in the report is vs this id
   litellm_proxy_port: 4000
   default_temperature: 0.0
   default_max_tokens: 4096
   request_timeout_s: 300
-  tau2_user_model: ml4              # FIXED user simulator for τ²-bench, identical for every run
+  tau2_user_model: minimax          # FIXED user simulator for τ²-bench, identical for every run
   tau2_user_model_params: {}
 models:
   # ---- reference only (never called, never benchmarked) ---------------------
 
-  - id: ml4
-    name: Mistral Large 4
+  - id: minimax
+    name: MiniMax M3.1 Flash
     provider: openai_compatible
-    base_url: https://api.mistral.ai/v1
-    model: mistral-large-latest                     # TODO pin exact version
-    api_key_env: MISTRAL_API_KEY
-    price_in_per_mtok: 0.0
-    price_out_per_mtok: 0.0
-    max_concurrency: 8
-    extra_params: {}
-    extras: [ml4_aider]
-    suites: [core, coder]                           # baseline also runs the coder suite (reference for qcoder)
-
-
-
-
+    base_url: https://api.xkiro.com/v1
+    model: minimax/minimax-m3.1-flash
+    api_key_env: BENCHLAB_KEY_MINIMAX
+    price_in_per_mtok: 0.15
+    price_out_per_mtok: 0.6
+    max_concurrency: 4

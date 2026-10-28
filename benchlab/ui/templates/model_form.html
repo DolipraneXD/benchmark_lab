@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <h1>{{ 'Edit ' ~ m if m else 'Add a model' }}</h1>
-  <p class="lede">Saved to {{ current_cfg }} and checked before writing. Never paste a key here: name the variable that holds it in <code>.env</code>.</p>
+  <p class="lede">Saved to {{ current_cfg }} and checked before writing. The API key goes to <code>.env</code>, never into {{ current_cfg }}.</p>
 </div>
 {% if err %}<div class="notice fault" role="alert">{{ err }}</div>{% endif %}
 <form method="post" action="/models/save">
@@ -20,15 +20,26 @@
   </section>
   <section class="plate">
     <h3>Endpoint</h3>
-    <p class="help">Where requests go and which key they carry.</p>
+    <p class="help">Where requests go.</p>
     <div class="fields">
       <div><label for="f-provider">Provider</label><select id="f-provider" name="provider">
         {% for p in ['openai_compatible', 'anthropic', 'bedrock'] %}<option {{ 'selected' if form.provider == p }}>{{ p }}</option>{% endfor %}</select></div>
       <div><label for="f-base">Base URL <span class="hint">ends in /v1</span></label><input id="f-base" type="text" name="base_url" value="{{ form.base_url }}" placeholder="https://api.mistral.ai/v1"></div>
       <div><label for="f-model">Model name <span class="hint">exactly as the API expects</span></label><input id="f-model" type="text" name="model" value="{{ form.model }}" required></div>
-      <div><label for="f-key">Key variable <span class="hint">in .env</span></label><input id="f-key" type="text" name="api_key_env" value="{{ form.api_key_env }}" placeholder="MISTRAL_API_KEY"></div>
       <div><label for="f-conc">Parallel requests</label><input id="f-conc" type="number" min="1" name="max_concurrency" value="{{ form.max_concurrency }}"></div>
       <div><label>&nbsp;</label><div class="choices"><label><input type="checkbox" name="self_hosted" {{ 'checked' if form.self_hosted }}> Self-hosted on our GPUs</label></div></div>
+    </div>
+  </section>
+  <section class="plate">
+    <h3>API key</h3>
+    <p class="help">Each model gets its own key, saved in <code>.env</code> (readable by you only, never committed) under a name made from the config and the id. Models on the same provider account can share one. A saved key is never shown again.</p>
+    <div class="fields">
+      <div><label for="f-keymode">Which key</label><select id="f-keymode" name="key_mode">
+        {% for value, label in keys.options %}<option value="{{ value }}" {{ 'selected' if form.key_mode == value }}>{{ label }}</option>{% endfor %}</select>
+        {% set cur = (keys.own if form.key_mode == 'own' else (form.key_mode[4:] if form.key_mode and form.key_mode.startswith('var:') else none)) %}
+        {% if cur %}<span class="sub">{% if keys.saved.get(cur) %}<span class="lamp pass">saved {{ keys.saved[cur] }}</span>{% else %}<span class="lamp fault">no key saved yet</span>{% endif %}</span>{% endif %}</div>
+      <div><label for="f-apikey">Paste the key <span class="hint">{{ 'leave empty to keep the saved one' if m else 'optional now, needed to run' }}</span></label>
+        <input id="f-apikey" type="password" name="api_key" autocomplete="off" spellcheck="false" placeholder="sk-..."></div>
     </div>
   </section>
   <section class="plate">

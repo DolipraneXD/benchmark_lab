@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <h1>Models</h1>
-  <p class="lede">The models in {{ current_cfg }}. API keys stay in your <code>.env</code> file; this page only shows whether each one is set. Saving keeps the previous file as <code>{{ current_cfg }}.bak</code>.</p>
+  <p class="lede">The models in {{ current_cfg }} and the API keys they use. Saving a model keeps the previous file as <code>{{ current_cfg }}.bak</code>.</p>
 </div>
 <div class="row"><a class="btn primary" href="/models/new">Add a model</a></div>
 
@@ -23,6 +23,31 @@
   <div class="row" style="margin-top:16px"><button>Save roles</button>
     <span class="quiet small">Changing the baseline changes every comparison in the report. Changing the simulator makes new τ² scores incomparable with older ones.</span></div>
 </form>
+
+<section class="plate" style="margin-top:24px">
+  <h3>API keys</h3>
+  <p class="help">Keys are saved in <code>.env</code> in this folder, readable by you only and never committed. The panel and terminal runs both read them from there. A saved key is never shown again, only its last 4 characters; to change one, paste the new key over it.</p>
+  {% if keys %}
+  <div class="wrap"><table>
+    <tr><th>Variable</th><th>Used by</th><th>Status</th><th>New key</th><th></th></tr>
+    {% for k in keys %}
+    <tr>
+      <td><code>{{ k.var }}</code></td>
+      <td>{{ k.used_by|join(", ") }}</td>
+      <td>{% if k.source == 'env' %}<span class="lamp pass">in .env {{ k.tail }}</span>
+          {% elif k.source == 'shell' %}<span class="lamp hold" title="Set in the shell that started the panel. In the terminal that value wins over .env.">from your shell {{ k.tail }}</span>
+          {% else %}<span class="lamp fault">not set</span>{% endif %}</td>
+      <td><form method="post" action="/keys/save" class="keyset">
+            <input type="hidden" name="name" value="{{ k.var }}">
+            <input type="password" name="value" aria-label="New key for {{ k.var }}" placeholder="paste the key" autocomplete="off" spellcheck="false" required>
+            <button>Save</button>
+          </form></td>
+      <td>{% if k.in_file %}<form class="inline" method="post" action="/keys/{{ k.var }}/remove" data-confirm="Remove {{ k.var }} from .env? Models using it stop working until a key is saved again."><button class="danger">Remove</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="quiet">No model in this config needs a key.</p>{% endif %}
+</section>
 
 <h2>{{ rows|length }} models <span class="aside">Test sends three small requests: chat, tool call, streamed</span></h2>
 <div class="wrap"><table>

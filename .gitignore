@@ -13,10 +13,11 @@ build/
 .pytest_cache/
 .ruff_cache/
 
-# benchlab outputs
-runs/
-results/
-report.html
+# benchlab outputs: runs, results and reports never go to git
+runs*/
+results*/
+report*.html
+*-results.html
 litellm_config.yaml
 
 # vendored harnesses (cloned by `benchlab prepare`)
@@ -25,8 +26,6 @@ harnesses/
 # retrieval data is user-supplied
 retrieval/docs/
 retrieval/queries.jsonl
-runs_xkiro/
-results_xkiro/
 
 # benchlab ui backups of edited model registries
 *.yaml.bak

@@ -66,6 +66,52 @@
         if (!confirm(f.dataset.confirm)) e.preventDefault();
       })
     );
+    // benchmark hover cards: open on hover or keyboard focus, stay open while the pointer
+    // is on the card (so its link can be clicked), placed in the viewport (position: fixed)
+    let openTip = null, closeTimer = null;
+    const place = (el) => {
+      const tip = el.querySelector(".tip");
+      const r = el.getBoundingClientRect();
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      const left = Math.max(16, Math.min(r.left, window.innerWidth - w - 16));
+      const below = r.bottom + 6 + h < window.innerHeight;
+      tip.style.left = left + "px";
+      tip.style.top = (below ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + "px";
+    };
+    const show = (el) => {
+      clearTimeout(closeTimer);
+      if (openTip && openTip !== el) openTip.classList.remove("open");
+      openTip = el;
+      place(el);
+      el.classList.add("open");
+      place(el); // again once visible: sizes are exact now
+    };
+    const hideSoon = () => {
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        if (openTip) openTip.classList.remove("open");
+        openTip = null;
+      }, 200);
+    };
+    document.addEventListener("mouseover", (e) => {
+      const el = e.target.closest(".bench-tip");
+      if (el) show(el);
+      else if (openTip) hideSoon();
+    });
+    document.addEventListener("focusin", (e) => {
+      const el = e.target.closest(".bench-tip");
+      if (el) show(el);
+      else if (openTip) hideSoon();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && openTip) { openTip.classList.remove("open"); openTip = null; }
+    });
+    window.addEventListener("scroll", () => openTip && place(openTip), { passive: true });
+    // a click on the card's link must not toggle the checkbox of the label around it
+    document.addEventListener("click", (e) => {
+      if (e.target.closest(".bench-tip .tip") && !e.target.closest("a")) e.preventDefault();
+    });
+
     // quick-pick buttons on the run page: select benches of a stage / all models
     document.querySelectorAll("[data-pick]").forEach((b) =>
       b.addEventListener("click", () => {

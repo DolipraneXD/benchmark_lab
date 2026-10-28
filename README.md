@@ -1,7 +1,7 @@
 # BenchLab
 
 BenchLab runs a fixed set of benchmarks against any model you can reach through an API
-(endpoint + model name + key) and gives comparable, reproducible results. Each benchmark
+(endpoint + model name + key): add the model and its key in the web panel and run it and gives comparable, reproducible results. Each benchmark
 wraps its **official harness**; BenchLab never scores anything itself. It records every
 request (tokens, cost, latency, errors), so you can tell wrong answers apart from timeouts
 and API failures.
@@ -11,7 +11,8 @@ You can drive it two ways:
 - **Web control panel:** `benchlab ui`. It starts the same commands for you and shows them
   live.
 
-The baseline is Mistral Large 4 (`ml4`): every score in the report is compared to it.
+Every score in the report is compared to a baseline model, chosen in `models.yaml`
+(`settings.baseline_model`) or in the panel under **Models → Roles**.
 
 ## Setup
 
@@ -22,9 +23,9 @@ You need Python 3.11+. Docker is only needed for benchmarks that run model-writt
 uv sync                          # with uv
 # or, without uv:
 python3 -m venv .venv
-.venv/bin/pip install -e . pytest pytest-asyncio ruff
+.venv/bin/pip install -e . pytest pytest-asyncio ruff   # also installs uv, used for the harnesses
 
-cp .env.example .env             # put your API keys here (.env is git-ignored)
+cp .env.example .env             # API keys live here (git-ignored); the panel can fill it
 source .venv/bin/activate        # makes `benchlab` available in this terminal
 benchlab models --keys           # validate models.yaml and show which keys are set
 ```
@@ -38,34 +39,49 @@ created the first time that benchmark runs, with exact versions recorded in
 
 ## Models (`models.yaml`)
 
-All models are listed in `models.yaml`. The top of the file documents every field.
-Today it contains the baseline:
+All models are listed in `models.yaml`. The top of the file documents every field. An
+entry looks like this:
 
 ```yaml
 settings:
-  profile: lite              # same benches on smaller fixed subsets (see "Cheap mode")
-  baseline_model: ml4        # every score is compared to this model
-  tau2_user_model: ml4       # the fixed customer simulator for τ²-bench
-  # grader_model: <id>       # BrowseComp grader; defaults to the baseline
+  profile: lite                  # same benches on smaller fixed subsets (see "Cheap mode")
+  baseline_model: minimax        # every score is compared to this model
+  tau2_user_model: minimax       # the fixed customer simulator for τ²-bench
+  # grader_model: <id>           # BrowseComp grader; defaults to the baseline
 
 models:
-  - id: ml4
-    name: Mistral Large 4
+  - id: minimax
+    name: MiniMax M3.1 Flash
     provider: openai_compatible
-    base_url: https://api.mistral.ai/v1
-    model: mistral-large-latest
-    api_key_env: MISTRAL_API_KEY       # the key is read from this variable in .env
-    price_in_per_mtok: 0.0             # USD per 1M tokens; 0 = unknown, cost shows as n/a
-    price_out_per_mtok: 0.0
-    max_concurrency: 8
-    suites: [core, coder]
+    base_url: https://api.xkiro.com/v1
+    model: minimax/minimax-m3.1-flash
+    api_key_env: BENCHLAB_KEY_MINIMAX  # the model's own key, stored in .env
+    price_in_per_mtok: 0.15            # USD per 1M tokens; 0 = unknown, cost shows as n/a
+    price_out_per_mtok: 0.6
+    max_concurrency: 4
 ```
 
 ### Adding a model
 
-Add an entry like the one above in `models.yaml`, or use **Models → Add a model** in the
-control panel. Put its key in `.env` under the name given in `api_key_env`. Then test the
-connection:
+The easy way is the panel: **Models → Add a model**. Fill in the endpoint and model name,
+paste the API key, and save. Then click **Test** on the model's row.
+
+Each model gets **its own key**, stored in `.env` under a name made from the config and the
+model id:
+
+| Config | Model id | Key variable |
+|---|---|---|
+| `models.yaml` | `minimax` | `BENCHLAB_KEY_MINIMAX` |
+| `models.xkiro.yaml` | `minimax` | `BENCHLAB_KEY_XKIRO_MINIMAX` |
+
+Ids are unique within a config, so adding a model never overwrites another model's key, even
+when both configs have a model with the same id. When several models use one provider
+account, choose **Same key as …** in the form so they share one variable. Renaming a model
+moves its key to the new name; deleting a model removes its key from `.env`.
+
+By hand: add an entry to `models.yaml` with `api_key_env: BENCHLAB_KEY_<ID>`, and add the
+line `BENCHLAB_KEY_<ID>=<your key>` to `.env`. Any other variable name works too. Then test
+the connection:
 
 ```bash
 benchlab check --model <id>
@@ -98,8 +114,9 @@ panel, change roles under **Models → Roles**.
 
 ### Second config: `models.xkiro.yaml`
 
-This config sends every model through one OpenAI-compatible endpoint (xkiro.com) with a
-single key (`XKIRO_API_KEY`), to try the pipeline cheaply. It writes to `runs_xkiro/` and
+A trial config for models reached through xkiro.com, to try the pipeline cheaply. It
+starts with only `minimax`, which shares `BENCHLAB_KEY_MINIMAX` with `models.yaml`; add
+other models from the panel. It writes to `runs_xkiro/` and
 `results_xkiro/`, so trial numbers never mix with real ones. Pass `-c models.xkiro.yaml`
 to any command, or switch config in the panel header. A reseller can't prove it serves the
 official weights, so use these runs to test the setup, not to decide.
@@ -108,10 +125,10 @@ official weights, so use these runs to test the setup, not to decide.
 
 ```bash
 benchlab check --model all                              # test every model's connection first
-benchlab run --model ml4 --stage 1 --dry-run            # show the plan and estimated cost
-benchlab run --model ml4 --stage 1 --smoke              # 2-3 tasks per bench, to check the setup
-benchlab run --model ml4 --stage 1 --budget-usd 10      # the real run, stopped at $10
-benchlab run --model ml4 --bench gpqa,bfcl              # specific benchmarks
+benchlab run --model minimax --stage 1 --dry-run            # show the plan and estimated cost
+benchlab run --model minimax --stage 1 --smoke              # 2-3 tasks per bench, to check the setup
+benchlab run --model minimax --stage 1 --budget-usd 10      # the real run, stopped at $10
+benchlab run --model minimax --bench gpqa,bfcl              # specific benchmarks
 benchlab runs                                           # list runs and their status
 benchlab usage                                          # tokens, cost, latency and error rates
 benchlab report                                         # build report.html and results/tracker.json
@@ -193,7 +210,7 @@ A promptfoo red-team CSV from an outside lab can be imported as the `redteam` be
 for one model:
 
 ```bash
-benchlab import-redteam ~/Downloads/report.csv -m ml4
+benchlab import-redteam ~/Downloads/report.csv -m minimax
 benchlab report
 ```
 
@@ -242,10 +259,13 @@ changing its code.
 ### What it does
 
 - **Dashboard:** running jobs, recent results, and today's spend per model.
-- **Models:** add, edit and delete models, set the roles, and test a connection. Keys are
-  never shown, only whether each one is set.
+- **Models:** add, edit and delete models, set the roles, and test a connection.
+- **API keys** (on the Models page): paste a key for each variable the models use, replace
+  it or remove it. See [API keys in the panel](#api-keys-in-the-panel).
 - **New run:** pick models and benchmarks, see the plan and the cost estimate, then start
-  with a budget.
+  with a budget. A benchmark whose model, or whose helper model, has no key is marked
+  "Can't run: missing key" with the reason, and Start leaves it out. Helper models are the
+  τ²-bench customer and the BrowseComp grader.
 - **Jobs:** live progress, requests, tokens, spend against the budget, and the log. Stop
   saves progress, and Resume continues the run.
 - **Results:** every run with its scores and warnings. Rebuild and open the report.
@@ -256,6 +276,28 @@ It writes the same folders a terminal run would. The panel won't start a model a
 benchmark pair that is already running. Model edits are checked before saving; comments in
 the YAML are kept, and the previous file is saved as `models.yaml.bak`. Job records and
 logs are in `runs/.jobs/`.
+
+### API keys in the panel
+
+You can paste a key when you add or edit a model (see [Adding a model](#adding-a-model)).
+The **API keys** section on the Models page lists every key variable the models use, with
+the models using each one. Paste a key there and click Save to replace it:
+- The key is written to `.env` in the repo folder, the same file terminal runs read, so it
+  works for both. It replaces any older value for that variable.
+- Checks and new runs use it right away, with no panel restart.
+- A saved key is never sent back to the page; you only see its last 4 characters.
+- **Remove** deletes the line from `.env`.
+
+How the keys are protected:
+- `.env` is git-ignored, and the panel makes it readable by you only (`chmod 600`) when it
+  starts and on every save. No backup copy of `.env` is made.
+- Only variables used by a model in the current config can be written, so the panel can't
+  be used to set things like `PATH`.
+- The key is not encrypted on disk: anyone who can log in as you, or read your backups, can
+  read `.env`.
+
+A key exported in your shell shows as "from your shell". In the terminal, that value wins
+over `.env`.
 
 ### Security
 

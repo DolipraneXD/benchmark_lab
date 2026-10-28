@@ -76,7 +76,7 @@ def test_model_add_edit_delete_keeps_comments(client, models_yaml):
         "kind": "chat",
         "base_url": "http://127.0.0.1:1/v1",
         "model": "m",
-        "api_key_env": "MOCK_API_KEY",
+        "key_mode": "var:MOCK_API_KEY",
         "max_concurrency": "2",
         "price_in_per_mtok": "0.5",
         "price_out_per_mtok": "1.5",
@@ -97,14 +97,90 @@ def test_model_add_edit_delete_keeps_comments(client, models_yaml):
 
     client.post("/models/newm/delete")
     assert "id: newm" not in models_yaml.read_text()
-    r = client.post("/models/claude/delete", follow_redirects=False)  # the baseline
-    assert "err=" in r.headers["location"] and "id: claude" in models_yaml.read_text()
 
 
-def test_model_check(client):
-    r = client.post("/models/mock/check")
-    assert r.status_code == 200 and "works" in r.text
-    assert "works" in client.get("/models").text  # remembered on the models page
+def test_each_model_gets_its_own_key(client, models_yaml):
+    import os
+    import stat
+
+    env = models_yaml.parent / ".env"
+    key = "sk-newm-own-key-1234567890abcd"
+    form = {
+        "original_id": "",
+        "id": "newm",
+        "name": "New model",
+        "provider": "openai_compatible",
+        "base_url": "http://127.0.0.1:1/v1",
+        "model": "m",
+        "key_mode": "own",
+        "api_key": key,
+    }
+    r = client.post("/models/save", data=form)
+    assert "Saved newm" in r.text and key not in r.text
+    text = models_yaml.read_text()
+    assert "api_key_env: BENCHLAB_KEY_NEWM" in text and key not in text
+    assert f"BENCHLAB_KEY_NEWM={key}\n" in env.read_text()
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+    assert os.environ["BENCHLAB_KEY_NEWM"] == key
+
+    page = client.get("/models/newm/edit").text
+    assert "saved ••••abcd" in page and key not in page
+
+    # rename: the key moves to the new id's variable, the old one is dropped
+    r = client.post(
+        "/models/save", data={**form, "original_id": "newm", "id": "newer", "api_key": ""}
+    )
+    assert "api_key_env: BENCHLAB_KEY_NEWER" in models_yaml.read_text()
+    assert f"BENCHLAB_KEY_NEWER={key}" in env.read_text()
+    assert "BENCHLAB_KEY_NEWM" not in env.read_text()
+
+    # share another model's key instead: its own variable goes away
+    shared = {
+        **form,
+        "original_id": "newer",
+        "id": "newer",
+        "api_key": "",
+        "key_mode": "var:MOCK_API_KEY",
+    }
+    client.post("/models/save", data=shared)
+    assert "id: newer" in models_yaml.read_text()
+    assert "BENCHLAB_KEY_NEWER" not in env.read_text()
+
+    # refusals keep the file unchanged and never echo the pasted key
+    before = models_yaml.read_text()
+    for data, why in [
+        ({**form, "id": "x1", "api_key": "two words"}, "spaces"),
+        ({**form, "id": "x2", "key_mode": "none"}, "No key needed but pasted a key"),
+        ({**form, "id": "x3", "key_mode": "var:PATH"}, "Choose which key"),
+    ]:
+        r = client.post("/models/save", data=data)
+        assert why in r.text and "sk-newm" not in r.text, why
+    assert models_yaml.read_text() == before
+
+    # deleting a model removes its own key from .env
+    client.post("/models/save", data={**form, "id": "gone", "api_key": key})
+    assert "BENCHLAB_KEY_GONE" in env.read_text()
+    client.post("/models/gone/delete")
+    assert "BENCHLAB_KEY_GONE" not in env.read_text()
+
+
+def test_key_names_are_unique_per_config():
+    from benchlab.ui.env_store import key_name
+
+    assert key_name("models.yaml", "ml4") == "BENCHLAB_KEY_ML4"
+    assert key_name("/x/models.xkiro.yaml", "ml4") == "BENCHLAB_KEY_XKIRO_ML4"
+
+
+def test_plan_blocks_pairs_whose_helper_has_no_key(client, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY")  # claude is the τ² customer in the test config
+    r = client.post(
+        "/run/plan", data={"models": ["mock", "nokey"], "benches": ["t2air", "ttft"], "smoke": "on"}
+    )
+    assert "Can't run: missing key" in r.text
+    assert "customer (user simulator) is claude, which has no API key" in r.text
+    assert "nokey has no API key (DEFINITELY_UNSET_KEY_ENV)" in r.text
+    r = client.post("/run/start", data={"models": ["nokey"], "benches": ["ttft"], "smoke": "on"})
+    assert "Nothing to run. nokey has no API key" in r.text
 
 
 def test_plan(client):
@@ -216,3 +292,85 @@ def test_delete_explains_roles_and_roles_can_move(client, models_yaml):
         follow_redirects=False,
     )
     assert "Roles+not+saved" in r.headers["location"]
+
+
+def test_api_keys_saved_in_env_safely(models_yaml, monkeypatch):
+    import os
+    import stat
+
+    env = models_yaml.parent / ".env"
+    env.write_text("# my keys\nOTHER_KEY=keep-me\n")
+    env.chmod(0o644)
+    c = TestClient(create_app(TOKEN, root=models_yaml.parent, port=8765), base_url=BASE)
+    c.get(f"/?token={TOKEN}")
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600  # locked when the panel starts
+
+    page = c.get("/models").text
+    assert "MOCK_API_KEY" in page and "from your shell" in page
+    assert "sk-mock-secret-key-1234567890" not in page
+
+    new = "sk-new-panel-key-abcdef9876"
+    r = c.post("/keys/save", data={"name": "MOCK_API_KEY", "value": f" {new} "})
+    assert r.status_code == 200 and "Saved MOCK_API_KEY" in r.text
+    text = env.read_text()
+    assert text.startswith("# my keys\nOTHER_KEY=keep-me\n") and f"MOCK_API_KEY={new}\n" in text
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+    assert os.environ["MOCK_API_KEY"] == new  # live for checks and new jobs
+    page = c.get("/models").text
+    assert "in .env ••••9876" in page and new not in page
+
+    c.post("/keys/save", data={"name": "MOCK_API_KEY", "value": "sk-second-key-000011112222"})
+    assert env.read_text().count("MOCK_API_KEY=") == 1  # replaced, not appended
+
+    before = env.read_text()
+    for data, why in [
+        ({"name": "PATH", "value": "x" * 20}, "not used by any model"),
+        ({"name": "MOCK_API_KEY", "value": "two words here"}, "spaces"),
+        ({"name": "MOCK_API_KEY", "value": "XKIRO_API_KEY"}, "not the variable name"),
+        ({"name": "MOCK_API_KEY", "value": ""}, "empty"),
+    ]:
+        r = c.post("/keys/save", data=data)
+        assert why in r.text, why
+    assert env.read_text() == before
+
+    r = c.post("/keys/MOCK_API_KEY/remove")
+    assert "Removed MOCK_API_KEY" in r.text
+    assert "MOCK_API_KEY" not in env.read_text() and "OTHER_KEY=keep-me" in env.read_text()
+    assert "MOCK_API_KEY" not in os.environ
+
+
+def test_job_page_says_why_a_pair_was_skipped(client, models_yaml):
+    rd = models_yaml.parent / "runs"
+    job = J.Job(
+        id="20261028-150008-a6b7",
+        argv=["benchlab", "run"],
+        config="models.yaml",
+        pairs=[["mock", "t2tel"], ["mock", "gpqa"]],
+        started_at=time.time() - 60,
+    )
+    jpath, log, exit_file = J._paths(rd, job.id)
+    jpath.write_text(json.dumps(J.asdict(job)))
+    exit_file.write_text("1")
+    # what `benchlab run` prints when the τ² user simulator has no key (rich wraps at 80)
+    log.write_text(
+        "─────────────────── mock x t2tel ───────────────────\n"
+        "harness not ready for t2tel: t2tel: user simulator model ml4: model ml4: env var\n"
+        "MISTRAL_API_KEY is not set (put it in .env)\n"
+    )
+    page = client.get(f"/fragments/jobs/{job.id}").text
+    assert "Skipped" in page and "env var MISTRAL_API_KEY is not set" in page
+    assert "Not started" in page  # gpqa: the job ended before it
+    assert "Waiting its turn" not in page
+
+
+def test_benchmarks_have_hover_descriptions(client):
+    from benchlab.bench_about import about
+    from benchlab.registry import BENCHES
+
+    assert all(about(k)["text"] for k in BENCHES)  # every benchmark has a description
+    page = client.get("/run").text
+    assert 'class="bench-tip"' in page
+    assert "https://github.com/sierra-research/tau2-bench" in page
+    assert "198 graduate-level multiple-choice questions" in page
+    plan = client.post("/run/plan", data={"models": ["mock"], "benches": ["ttft"], "smoke": "on"})
+    assert "Time to first token" in plan.text

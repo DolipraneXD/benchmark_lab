@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}New run{% endblock %}
 {% block content %}
+{% import "_ui.html" as ui %}
 <div class="page-head">
   <h1>New run</h1>
   <p class="lede">Choose models and benchmarks; the plan below updates as you go. The run starts in the background exactly as <code>benchlab run</code> would, and starting the same choice again resumes anything unfinished.</p>
@@ -20,7 +21,7 @@
       <button type="button" data-pick="benches:">Clear</button>
     </div>
     <div class="choices">
-      {% for b in benches %}<label title="{{ b.harness }}"><input type="checkbox" name="benches" value="{{ b.key }}"><span>{{ b.display }} <span class="id">{{ b.key }}{{ ', needs Docker' if b.needs_docker }}</span></span></label>{% endfor %}
+      {% for b in benches %}<label><input type="checkbox" name="benches" value="{{ b.key }}"><span>{{ ui.bench(b.key, b.display) }} <span class="id">{{ b.key }}{{ ', needs Docker' if b.needs_docker }}</span></span></label>{% endfor %}
     </div>
   </section>
   <section class="plate">

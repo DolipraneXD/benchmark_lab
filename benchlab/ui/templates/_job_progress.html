@@ -18,9 +18,14 @@
   <tr><th>Model and benchmark</th><th>Tasks</th><th class="num">Requests</th><th class="num">Tokens in / out</th><th>Spend</th><th class="num">Failed requests</th><th>Score</th></tr>
   {% for r in rows %}
   <tr>
-    <td><span class="name">{{ r.model }}</span> on {{ r.bench }}{% if r.run %}<a class="sub" href="/runs/{{ r.run }}">Run folder</a>{% endif %}</td>
-    {% if not r.run %}
+    <td><span class="name">{{ r.model }}</span> on {{ ui.bench(r.bench) }}{% if r.run %}<a class="sub" href="/runs/{{ r.run }}">Run folder</a>{% endif %}</td>
+    {% if r.skipped %}
+      <td colspan="6"><span class="lamp fault">Skipped</span> <span class="small">{{ r.skipped|redact }}</span>
+        <span class="sub">Fix this, then Resume. Resume runs the whole job again, finished pairs included.</span></td>
+    {% elif not r.run and status == 'running' %}
       <td colspan="6" class="quiet">Waiting its turn. Pairs run one after another.</td>
+    {% elif not r.run %}
+      <td colspan="6"><span class="lamp hold">Not started</span> <span class="quiet small">The job ended before reaching this pair. See the log below.</span></td>
     {% else %}
       {% set u = r.usage %}
       <td style="min-width:150px">

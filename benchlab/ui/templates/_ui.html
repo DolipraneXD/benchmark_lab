@@ -9,6 +9,14 @@
 <span class="lamp {{ cls.get(status, 'hold') }}">{{ label.get(status, status) }}</span>
 {%- endmacro %}
 
+{# a benchmark name; hovering or focusing it shows what it measures and its project link #}
+{% macro bench(key, label=none) -%}
+{%- set a = about(key) -%}
+<span class="bench-tip" tabindex="0">{{ label if label is not none else key }}
+  <span class="tip" role="tooltip"><strong>{{ a.name }}</strong><span>{{ a.text }}</span>
+  {%- if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">{{ a.url.split('://', 1)[1] }} ↗</a>{% endif %}</span></span>
+{%- endmacro %}
+
 {# value on a 0-100 scale; the blue tick is the baseline model's score on the same bench #}
 {% macro readout(value, metric, base=none, is_base=false, pct=true, base_id='', large=false) -%}
 <div class="readout{{ ' large' if large }}" title="{{ metric }}">

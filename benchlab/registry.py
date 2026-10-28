@@ -518,7 +518,16 @@ _reg(
         "guidellm (or vllm bench serve)",
         adapter="benchlab.adapters.serving:ServingAdapter",
         n_tasks_default=3,
-        aliases=("srv_quant", "srv_gpus", "srv_mem", "srv_ttft", "srv_tps", "srv_c1", "srv_c8", "srv_c32"),
+        aliases=(
+            "srv_quant",
+            "srv_gpus",
+            "srv_mem",
+            "srv_ttft",
+            "srv_tps",
+            "srv_c1",
+            "srv_c8",
+            "srv_c32",
+        ),
         notes="srv_match (self-hosted vs API score gap) is computed by `benchlab report`",
     )
 )

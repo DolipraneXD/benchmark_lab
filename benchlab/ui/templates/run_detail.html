@@ -3,7 +3,7 @@
 {% block title %}{{ conf.model_id }} on {{ conf.bench }}{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>{{ conf.model_id }} on {{ conf.bench }}</h1>
+  <h1>{{ conf.model_id }} on {{ ui.bench(conf.bench) }}</h1>
   <p class="lede">{{ 'Smoke run, ' if conf.smoke }}{{ 'imported, ' if (conf.extra or {}).imported }}created {{ (conf.created_at or '')[:16]|replace('T', ' ') }}. Folder <code>{{ name }}</code></p>
 </div>
 

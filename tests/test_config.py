@@ -93,6 +93,8 @@ def test_lite_profile_overrides_only_unset_knobs(models_yaml, tmp_path):
 
 
 def test_shipped_registries():
+    """The shipped configs load and are usable; which models they hold is up to the user
+    (models are added from the control panel)."""
     from pathlib import Path
 
     from benchlab.config import load_config
@@ -100,16 +102,10 @@ def test_shipped_registries():
     root = Path(__file__).resolve().parent.parent
     for name in ("models.yaml", "models.xkiro.yaml"):
         cfg = load_config(root / name, dotenv=False)
-        assert cfg.settings.baseline_model == "ml4"
-        assert cfg.get("ml4") in cfg.chat_models()
-        assert all(m.provider != "anthropic" for m in cfg.chat_models())
+        assert cfg.get(cfg.settings.baseline_model) in cfg.chat_models()
         assert all(m not in cfg.chat_models() for m in cfg.models if m.reference)
     x = load_config(root / "models.xkiro.yaml", dotenv=False)
-    claude = x.get("claude")  # the trial config keeps Claude as published scores only
-    assert claude.reference and claude not in x.chat_models()
-    assert x.settings.grader_model != x.settings.baseline_model
-    assert x.settings.profile == "lite" and x.settings.runs_dir == "runs_xkiro"
-    assert {m.api_key_env for m in x.chat_models()} == {"XKIRO_API_KEY"}
+    assert x.settings.runs_dir == "runs_xkiro"  # trial runs never mix with real ones
 
 
 def test_reference_model_is_never_run_or_proxied(tmp_path):

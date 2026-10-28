@@ -143,7 +143,7 @@ form.inline { display: inline; }
 
 label { display: block; font-weight: 600; font-size: var(--s-13); margin-bottom: 5px; }
 label .hint { font-weight: 400; color: var(--graphite); }
-input[type=text], input[type=number], select, textarea {
+input[type=text], input[type=password], input[type=number], select, textarea {
   width: 100%; font: inherit; font-size: var(--s-15); padding: 7px 10px;
   border: 1px solid var(--rule); border-radius: var(--radius);
   background: var(--plate-sunk); color: var(--ink);
@@ -257,3 +257,26 @@ td .row { flex-wrap: nowrap; }
 }
 .figures.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 28px; }
 .figures.grid2 div { min-width: 0; }
+
+/* API keys: value field + save on one line */
+.keyset { display: flex; gap: 8px; align-items: center; }
+.keyset input { min-width: 0; flex: 1 1 220px; font-family: var(--mono); }
+
+/* benchmark hover card: what it measures + project link. Fixed-positioned by app.js so
+   table scroll containers don't clip it. */
+.bench-tip { position: relative; text-decoration: underline dotted var(--graphite); text-underline-offset: 3px; cursor: help; }
+.bench-tip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+.bench-tip .tip {
+  position: fixed; z-index: 50; width: min(340px, calc(100vw - 32px));
+  padding: 10px 12px; background: var(--plate); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  font-size: var(--s-13); font-weight: 400; line-height: 1.45; text-align: left;
+  white-space: normal; letter-spacing: 0; cursor: auto;
+  visibility: hidden; opacity: 0; transition: opacity 120ms ease, visibility 0s 120ms;
+}
+.bench-tip .tip strong { display: block; margin-bottom: 4px; font-size: var(--s-15); }
+.bench-tip .tip a { display: inline-block; margin-top: 6px; word-break: break-all; }
+.bench-tip.open .tip { visibility: visible; opacity: 1; transition: opacity 120ms ease; }
+h1 .bench-tip .tip { font-size: var(--s-13); }
+@media (prefers-reduced-motion: reduce) { .bench-tip .tip { transition: none; } }

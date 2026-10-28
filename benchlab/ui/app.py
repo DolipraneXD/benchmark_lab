@@ -27,11 +27,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from benchlab import __version__, registry
+from benchlab.bench_about import about
 from benchlab.config import BenchConfig, load_config
 from benchlab.redact import redact
 from benchlab.runs import RunDir
+from benchlab.ui import env_store, models_store
 from benchlab.ui import jobs as J
-from benchlab.ui import models_store
 from benchlab.usage import UsageLog
 
 HERE = Path(__file__).parent
@@ -59,8 +60,11 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
     tpl.env.filters["num"] = lambda v, nd=1: "-" if v is None else f"{float(v):.{nd}f}"
     tpl.env.filters["ts"] = lambda t: datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M")
     tpl.env.filters["dur"] = _dur
+    tpl.env.globals["about"] = about  # benchmark hover cards
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     last_checks: dict[tuple[str, str], dict[str, Any]] = {}
+    env_path = root / ".env"
+    env_store.lock(env_path)  # keys live here: owner-only, like an ssh key
 
     # ---- guard: host, session cookie, same-origin POSTs ------------------------------
     @app.middleware("http")
@@ -183,14 +187,88 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
                 else ("set" if os.environ.get(m.api_key_env) else "missing")
             )
             rows.append({"m": m, "key": key, "check": last_checks.get((name, m.id))})
-        return page(request, "models.html", cfg=cfg, rows=rows)
+        return page(request, "models.html", cfg=cfg, rows=rows, keys=key_rows(cfg))
+
+    def key_names(cfg: BenchConfig) -> set[str]:
+        return {m.api_key_env for m in cfg.models if m.api_key_env and not m.reference}
+
+    def key_rows(cfg: BenchConfig) -> list[dict[str, Any]]:
+        """One row per key variable the config uses. Values never leave this function:
+        only where the key comes from and its last 4 characters."""
+        saved = env_store.in_file(env_path)
+        out = []
+        for var in sorted(key_names(cfg)):
+            live = os.environ.get(var)
+            source = "missing" if not live else "env" if saved.get(var) == live else "shell"
+            out.append(
+                {
+                    "var": var,
+                    "used_by": [m.id for m in cfg.models if m.api_key_env == var],
+                    "source": source,
+                    "in_file": var in saved,
+                    "tail": env_store.masked(live),
+                }
+            )
+        return out
+
+    @app.post("/keys/save")
+    def key_save(request: Request, name: str = Form(...), value: str = Form("")):
+        cfg, e = load(request)
+        if not cfg:
+            return back("/models", err=e)
+        try:
+            env_store.set_key(env_path, name, value, key_names(cfg))
+        except ValueError as ex:
+            return back("/models", err=f"Key not saved: {ex}")
+        return back("/models", msg=f"Saved {name} in .env. New checks and runs use it now.")
+
+    @app.post("/keys/{name}/remove")
+    def key_remove(request: Request, name: str):
+        cfg, e = load(request)
+        if not cfg:
+            return back("/models", err=e)
+        try:
+            env_store.remove_key(env_path, name, key_names(cfg))
+        except ValueError as ex:
+            return back("/models", err=f"Key not removed: {ex}")
+        return back("/models", msg=f"Removed {name} from .env.")
+
+    def key_choices(request: Request, cfg: BenchConfig | None, model_id: str | None):
+        """Options for the model form's key menu, plus what each variable holds now
+        (last 4 characters only)."""
+        own = env_store.key_name(cfg_name(request), model_id) if model_id else None
+        opts = [("own", f"Its own key ({own})" if own else "Its own key, named after the id")]
+        for var in sorted(key_names(cfg) - {own}) if cfg else []:
+            ids = ", ".join(m.id for m in cfg.models if m.api_key_env == var)
+            opts.append((f"var:{var}", f"Same key as {ids} ({var})"))
+        opts.append(("none", "No key needed (local or self-hosted endpoint)"))
+        saved = {v: env_store.masked(os.environ.get(v)) for v in key_names(cfg)} if cfg else {}
+        return {"options": opts, "own": own, "saved": saved}
+
+    def key_mode(request: Request, model_id: str | None, var: str | None) -> str:
+        if not var:
+            return "none" if model_id else "own"
+        if model_id and var == env_store.key_name(cfg_name(request), model_id):
+            return "own"
+        return f"var:{var}"
+
+    def form_page(request, cfg, model_id, form, err=None):
+        return page(
+            request,
+            "model_form.html",
+            cfg=cfg,
+            m=model_id,
+            form=form,
+            err=err,
+            keys=key_choices(request, cfg, model_id),
+        )
 
     @app.get("/models/new", response_class=HTMLResponse)
     def model_new(request: Request):
         cfg, e = load(request)
         if not cfg:
             return broken(request, e)
-        return page(request, "model_form.html", cfg=cfg, m=None, form=_form_values({}), err=None)
+        return form_page(request, cfg, None, {**_form_values({}), "key_mode": "own"})
 
     @app.get("/models/{model_id}/edit", response_class=HTMLResponse)
     def model_edit(request: Request, model_id: str):
@@ -201,35 +279,69 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
             raw = models_store.raw_model(cfg_path(request), model_id)
         except KeyError:
             return back("/models", err=f"unknown model {model_id}")
-        return page(
-            request, "model_form.html", cfg=cfg, m=model_id, form=_form_values(raw), err=None
-        )
+        form = {
+            **_form_values(raw),
+            "key_mode": key_mode(request, model_id, raw.get("api_key_env")),
+        }
+        return form_page(request, cfg, model_id, form)
+
+    def drop_unused_own_key(request: Request, var: str | None) -> None:
+        """Remove a model's own BENCHLAB_KEY_ variable from .env once no model in this
+        config uses it (after a delete, a rename or a switch to another key)."""
+        if not var or not var.startswith(env_store.PREFIX):
+            return
+        cfg, _ = load(request)
+        if cfg is not None and var not in key_names(cfg) and var in env_store.in_file(env_path):
+            env_store.remove_key(env_path, var, {var})
 
     @app.post("/models/save")
     async def model_save(request: Request):
         form = dict(await request.form())
         original = form.pop("original_id", "") or None
+        pasted = str(form.pop("api_key", "") or "")  # never stored in `form`: it is re-rendered
+        mode = str(form.get("key_mode") or "own")
         cfg, e = load(request)
+        old_var = None
+        if cfg is not None and original:
+            old_var = next((m.api_key_env for m in cfg.models if m.id == original), None)
         try:
             data = _parse_model_form(form)
+            if mode == "own":
+                var = env_store.key_name(cfg_name(request), data["id"])
+            elif mode == "none":
+                var = None
+                if pasted.strip():
+                    raise ValueError("You chose No key needed but pasted a key. Pick a key option.")
+            elif mode.startswith("var:") and cfg is not None and mode[4:] in key_names(cfg):
+                var = mode[4:]
+            else:
+                raise ValueError("Choose which key this model uses.")
+            value = env_store.clean_value(pasted) if pasted.strip() else None
+            data["api_key_env"] = var
             models_store.save_model(cfg_path(request), data, original)
         except ValueError as ex:
-            return page(
-                request,
-                "model_form.html",
-                cfg=cfg,
-                m=original,
-                form=form,
-                err=redact(str(ex)),
-            )
-        return back("/models", msg=f"saved {data['id']} in {cfg_name(request)}")
+            return form_page(request, cfg, original, form, err=redact(str(ex)))
+        if value is None and var and old_var and old_var != var and os.environ.get(old_var):
+            if not os.environ.get(var) and mode == "own":
+                value = os.environ[old_var]  # renamed, or moved to its own key: carry it over
+        if value is not None and var:
+            env_store.set_key(env_path, var, value, {var})
+        if old_var != var:
+            drop_unused_own_key(request, old_var)
+        msg = f"Saved {data['id']} in {cfg_name(request)}."
+        if var and not os.environ.get(var):
+            msg += f" It has no key yet: paste one on its Edit page or under API keys ({var})."
+        return back("/models", msg=msg)
 
     @app.post("/models/{model_id}/delete")
     def model_delete(request: Request, model_id: str):
+        cfg, _ = load(request)
+        var = next((m.api_key_env for m in cfg.models if m.id == model_id), None) if cfg else None
         try:
             models_store.delete_model(cfg_path(request), model_id)
         except ValueError as ex:
             return back("/models", err=redact(str(ex)))
+        drop_unused_own_key(request, var)
         return back("/models", msg=f"Deleted {model_id} from {cfg_name(request)}.")
 
     @app.post("/models/roles")
@@ -313,6 +425,15 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
             "budget": float(budget) if budget else None,
         }
 
+    def _blocked(cfg: BenchConfig, rows) -> dict[tuple[str, str], str]:
+        from benchlab.planning import blocked_reason
+
+        out = {}
+        for m, b, adapter_cls, *_ in rows:
+            if adapter_cls is not None and (why := blocked_reason(cfg, m, b)):
+                out[(m.id, b.key)] = why
+        return out
+
     def _plan(cfg: BenchConfig, sel: dict[str, Any]):
         from benchlab.planning import plan_rows
 
@@ -333,7 +454,8 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
         except (ValueError, KeyError) as ex:
             return HTMLResponse(f"<p class=err>{redact(str(ex))}</p>")
         busy = J.running_pairs(runs_dir(cfg))
-        total = sum(r[5] for r in rows if r[5] is not None)
+        blocked = _blocked(cfg, rows)
+        total = sum(r[5] for r in rows if r[5] is not None and (r[0].id, r[1].key) not in blocked)
         return tpl.TemplateResponse(
             request,
             "_plan.html",
@@ -342,6 +464,7 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
                 "total": total,
                 "unknown": any(r[5] is None for r in rows),
                 "busy": busy,
+                "blocked": blocked,
                 "sel": sel,
             },
         )
@@ -356,16 +479,24 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
             rows = _plan(cfg, sel)
         except (ValueError, KeyError) as ex:
             return back("/run", err=redact(str(ex)))
-        pairs = [[m.id, b.key] for m, b, adapter_cls, *_ in rows if adapter_cls is not None]
+        blocked = _blocked(cfg, rows)
+        pairs = [
+            [m.id, b.key]
+            for m, b, adapter_cls, *_ in rows
+            if adapter_cls is not None and (m.id, b.key) not in blocked
+        ]
         if not pairs:
-            return back("/run", err="nothing to run: no integrated (model, benchmark) pair")
+            why = " ".join(sorted(set(blocked.values()))) or "no integrated (model, benchmark) pair"
+            return back("/run", err=f"Nothing to run. {why}")
         rd = runs_dir(cfg)
         clash = {tuple(p) for p in pairs} & J.running_pairs(rd)
         if clash:
             txt = ", ".join(f"{m} × {b}" for m, b in sorted(clash))
             return back("/run", err=f"already running: {txt}")
         job = _start_job(cfg, request, sel, pairs)
-        return back(f"/jobs/{job.id}", msg="started")
+        left = ", ".join(f"{m} × {b}" for m, b in sorted(blocked))
+        msg = "Started." + (f" Left out for a missing key: {left}." if left else "")
+        return back(f"/jobs/{job.id}", msg=msg)
 
     def _start_job(cfg: BenchConfig, request: Request, sel: dict[str, Any], pairs) -> J.Job:
         models = sorted({m for m, _ in pairs})
@@ -763,7 +894,6 @@ def _parse_model_form(form: dict[str, Any]) -> dict[str, Any]:
         "provider": text("provider") or "openai_compatible",
         "base_url": text("base_url"),
         "model": text("model"),
-        "api_key_env": text("api_key_env"),
         "kind": None if text("kind") in (None, "chat") else text("kind"),
         "self_hosted": True if form.get("self_hosted") == "on" else None,
         "price_in_per_mtok": num("price_in_per_mtok"),
