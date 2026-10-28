@@ -404,6 +404,43 @@ def _run_one(cfg, m, b, adapter_cls, trials, subset, smoke, budget_usd, resume) 
     return 0
 
 
+CsvArg = typer.Argument(..., exists=True, dir_okay=False, help="the lab's CSV export")
+
+
+@app.command("import-redteam")
+def import_redteam(
+    csv_path: Path = CsvArg,
+    model: str = typer.Option(
+        ..., "--model", "-m", help="model id the CSV's target corresponds to"
+    ),
+    config: str | None = ConfigOpt,
+) -> None:
+    """Import an external red-team report (promptfoo CSV) as the `redteam` bench for one model."""
+    from benchlab.adapters.redteam import import_csv
+    from benchlab.results import append_result
+
+    cfg = _cfg(config)
+    try:
+        m = cfg.get(model)
+    except KeyError:
+        err.print(f"[red]unknown model {model!r}[/red]")
+        raise typer.Exit(2) from None
+    try:
+        run_dir, res = import_csv(cfg, m, csv_path)
+    except ValueError as e:
+        err.print(f"[red]import failed:[/red] {e}")
+        raise typer.Exit(2) from None
+    p = append_result(cfg.settings.results_dir, res, run_dir)
+    console.print(f"run dir: {run_dir.path}")
+    console.print(
+        f"[green]redteam {m.id}[/green]: pass_rate={_fmt(res.primary_value, 1)}  "
+        f"n={res.n_tasks} pass={int(res.metrics['n_pass'])} fail={int(res.metrics['n_fail'])} "
+        f"ungraded={res.errors.total}  -> {p}"
+    )
+    for w in res.warnings:
+        console.print(f"[yellow]warning:[/yellow] {w}")
+
+
 @app.command()
 def runs(config: str | None = ConfigOpt) -> None:
     """List run folders and their status."""

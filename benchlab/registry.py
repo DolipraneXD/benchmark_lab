@@ -409,6 +409,20 @@ _reg(
     )
 )
 
+# ---- imported (never run by BenchLab: `benchlab import-redteam`) -------------------
+_reg(
+    BenchInfo(
+        "redteam",
+        "Red team (external lab)",
+        4,
+        (),
+        "redteam",
+        "external red team, promptfoo CSV",
+        adapter=None,
+        notes="imported from an external lab's CSV with `benchlab import-redteam`; never run here",
+    )
+)
+
 # ---- coder suite (shares tb/swe above) ------------------------------------------
 _reg(
     BenchInfo(

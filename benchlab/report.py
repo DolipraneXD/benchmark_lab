@@ -450,7 +450,15 @@ def suspicious(cfg: BenchConfig, col: Collected) -> list[dict[str, str]]:
                 f"score {p:.1f} on {e.n_tasks} tasks",
                 "all-or-nothing scores usually mean a harness/format problem, not model quality",
             )
-        if m and m.has_prices and e.cost is None and bench not in NON_SCORE_BENCHES and e.n_tasks:
+        imported = bool((e.config.get("extra") or {}).get("imported"))  # no usage log by design
+        if (
+            m
+            and m.has_prices
+            and e.cost is None
+            and bench not in NON_SCORE_BENCHES
+            and e.n_tasks
+            and not imported
+        ):
             add(
                 e,
                 mid,

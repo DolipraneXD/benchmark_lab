@@ -468,6 +468,30 @@ temperature 1.0 / top_p 0.9 / max_tokens 1500 are recorded as deviations.
 Not exercised here (no KVM): command building and result parsing are tested on a
 synthetic result tree.
 
+## External red team (`redteam`, imported)
+
+Red-team results from an outside lab come in as a promptfoo red-team CSV
+(columns `Test ID, Plugin, Plugin ID, Strategy, Target, Prompt, Response, Pass,
+Score, Reason, Timestamp`). BenchLab never runs these attacks: it imports the
+lab's verdicts as the `redteam` bench for the model you name.
+
+```bash
+uv run benchlab import-redteam ~/Downloads/report_my-red-team-configuration.csv -m minimax -c models.xkiro.yaml
+uv run benchlab report -c models.xkiro.yaml
+```
+
+The CSV is copied to `raw/` of a new `runs/<ts>_<model>_redteam/` folder with
+its sha256 in `config.json`. The primary metric `pass_rate` is the share of
+graded tests the model resisted (`Pass`, partial passes included).
+`pass_rate_errors_as_fail`, `pass_rate_<group>` (bias, harmful, pii, …) and
+`plugin:<id>` come with it. A `Fail` row with an empty response and an empty
+reason was never graded (the target returned nothing): it counts as an API
+error, as in the other adapters, which makes the report flag runs with more
+than 5% of them. The lab's graders also see visible `Thinking:` text, so the
+import warns when responses contain it. Since there is no usage log, the
+report doesn't flag the missing cost. Import again to replace a result: the
+newest run wins.
+
 ## Cheap mode (`profile: lite`)
 
 The full core suite costs roughly $160 per model at Claude Sonnet 5.5 prices
@@ -531,6 +555,7 @@ benchlab usage                            # tokens / cost / latency / error rate
 benchlab run --model all --bench ttft      # TTFT probe, every model (stage 1)
 benchlab run --model all --bench serving   # serving benchmark, self-hosted models only
 benchlab report [--out report.html] [--no-smoke]   # report.html + results/tracker.json + results/suspicious.json
+benchlab import-redteam <lab.csv> -m <id>      # external red-team CSV (promptfoo) -> redteam bench
 ```
 
 `--model all` means every chat model. `--stage N` runs that stage's benches for
