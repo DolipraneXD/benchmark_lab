@@ -92,7 +92,7 @@ def test_lite_profile_overrides_only_unset_knobs(models_yaml, tmp_path):
     assert full.bfcl_subset is None and full.tau2_trials is None and full.harbor_subset_size == 50
 
 
-def test_shipped_registries_keep_claude_as_reference_only():
+def test_shipped_registries():
     from pathlib import Path
 
     from benchlab.config import load_config
@@ -100,12 +100,14 @@ def test_shipped_registries_keep_claude_as_reference_only():
     root = Path(__file__).resolve().parent.parent
     for name in ("models.yaml", "models.xkiro.yaml"):
         cfg = load_config(root / name, dotenv=False)
-        claude = cfg.get("claude")
-        assert claude.reference and claude not in cfg.chat_models()
-        assert all(m.provider != "anthropic" for m in cfg.chat_models())
         assert cfg.settings.baseline_model == "ml4"
-        assert cfg.settings.grader_model != cfg.settings.baseline_model
+        assert cfg.get("ml4") in cfg.chat_models()
+        assert all(m.provider != "anthropic" for m in cfg.chat_models())
+        assert all(m not in cfg.chat_models() for m in cfg.models if m.reference)
     x = load_config(root / "models.xkiro.yaml", dotenv=False)
+    claude = x.get("claude")  # the trial config keeps Claude as published scores only
+    assert claude.reference and claude not in x.chat_models()
+    assert x.settings.grader_model != x.settings.baseline_model
     assert x.settings.profile == "lite" and x.settings.runs_dir == "runs_xkiro"
     assert {m.api_key_env for m in x.chat_models()} == {"XKIRO_API_KEY"}
 

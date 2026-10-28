@@ -31,22 +31,9 @@ settings:
   request_timeout_s: 300
   tau2_user_model: ml4              # FIXED user simulator for τ²-bench, identical for every run
   tau2_user_model_params: {}
-  grader_model: dsflash             # BrowseComp grader; a model is never graded by itself
-
 models:
   # ---- reference only (never called, never benchmarked) ---------------------
 
-  - id: dsflash
-    name: DeepSeek-V4.1-Flash
-    provider: openai_compatible
-    base_url: https://api.deepseek.com/v1
-    model: deepseek-v4.1-flash                      # TODO verify model name
-    api_key_env: DEEPSEEK_API_KEY
-    price_in_per_mtok: 0.0
-    price_out_per_mtok: 0.0
-    max_concurrency: 8
-    extra_params: {}
-    extras: [ds_auto, ds_cps, ds_lps]
   - id: ml4
     name: Mistral Large 4
     provider: openai_compatible
