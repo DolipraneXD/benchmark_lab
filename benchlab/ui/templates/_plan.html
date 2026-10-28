@@ -1,0 +1,26 @@
+{% if rows %}
+<div class="wrap"><table>
+  <tr><th>Model and benchmark</th><th class="num">Tasks</th><th class="num">Trials</th><th class="num">Estimated cost</th><th>Status</th></tr>
+  {% for m, b, adapter_cls, n, k, est, notes in rows %}
+  <tr>
+    <td><span class="name">{{ m.id }}</span> on {{ b.key }}{% if b.needs_docker %}<span class="sub">needs Docker</span>{% endif %}</td>
+    <td class="num">{{ n or '?' }}</td><td class="num">{{ k }}</td>
+    <td class="num">{{ est|usd if est is not none else 'unknown price' }}</td>
+    <td>
+      {% if (m.id, b.key) in busy %}<span class="lamp live">Already running</span>
+      {% elif adapter_cls %}<span class="lamp pass">Ready</span>
+      {% else %}<span class="lamp hold">Skipped, not integrated</span>{% endif %}
+      {% for n in notes %}<span class="sub">{{ n }}</span>{% endfor %}
+    </td>
+  </tr>
+  {% endfor %}
+</table></div>
+<dl class="figures">
+  <div><dt>Estimated total</dt><dd>{{ total|usd }}</dd></div>
+  {% if sel.budget is not none %}<div><dt>Budget per run</dt><dd>{{ sel.budget|usd }}</dd></div>{% endif %}
+</dl>
+<p class="quiet small">A rough estimate from typical tokens per task{{ ', not counting models with unknown prices' if unknown }}. The real cost comes from the usage logs.
+{% if sel.budget is not none and total > sel.budget %}<br><span class="tag warn">The estimate is above the budget, so a run may stop before it finishes. It can be resumed.</span>{% endif %}</p>
+{% else %}
+<p class="empty">None of these benchmarks apply to these models. Each model's suites and extra benchmarks in the config decide what it runs.</p>
+{% endif %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}New run{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>New run</h1>
+  <p class="lede">Choose models and benchmarks; the plan below updates as you go. The run starts in the background exactly as <code>benchlab run</code> would, and starting the same choice again resumes anything unfinished.</p>
+</div>
+<form method="post" action="/run/plan" data-target="#plan" data-live>
+  <section class="plate">
+    <h3>Models</h3>
+    <div class="presets"><button type="button" data-pick="models:*">Select all</button><button type="button" data-pick="models:">Clear</button></div>
+    <div class="choices">
+      {% for m in models %}<label><input type="checkbox" name="models" value="{{ m.id }}"><span>{{ m.name }} <span class="id">{{ m.id }}</span></span></label>{% endfor %}
+    </div>
+  </section>
+  <section class="plate">
+    <h3>Benchmarks</h3>
+    <div class="presets">
+      {% for n, keys in stages.items() %}<button type="button" data-pick="benches:{{ keys|join(',') }}">Stage {{ n }}</button>{% endfor %}
+      <button type="button" data-pick="benches:">Clear</button>
+    </div>
+    <div class="choices">
+      {% for b in benches %}<label title="{{ b.harness }}"><input type="checkbox" name="benches" value="{{ b.key }}"><span>{{ b.display }} <span class="id">{{ b.key }}{{ ', needs Docker' if b.needs_docker }}</span></span></label>{% endfor %}
+    </div>
+  </section>
+  <section class="plate">
+    <h3>Limits</h3>
+    <div class="fields">
+      <div><label for="r-budget">Budget per run, $ <span class="hint">stops cleanly, resumable</span></label><input id="r-budget" type="text" inputmode="decimal" name="budget" placeholder="No cap"></div>
+      <div><label for="r-trials">Trials <span class="hint">empty uses the benchmark's default</span></label><input id="r-trials" type="number" min="1" name="trials"></div>
+      <div><label for="r-subset">Subset <span class="hint">empty uses the fixed default</span></label><input id="r-subset" type="text" name="subset" placeholder="all, 10, …"></div>
+      <div><label>&nbsp;</label><div class="choices"><label><input type="checkbox" name="smoke" checked> Smoke test, 2–3 tasks each</label></div></div>
+    </div>
+  </section>
+
+  <h2>Plan</h2>
+  <div id="plan"><p class="empty">Choose at least one model and one benchmark to see what will run and roughly what it costs.</p></div>
+  <div class="row" style="margin-top:20px">
+    <button class="primary" formaction="/run/start" formmethod="post">Start run</button>
+    <span class="quiet small">Only rows marked Ready run; the others are skipped.</span>
+  </div>
+</form>
+{% endblock %}

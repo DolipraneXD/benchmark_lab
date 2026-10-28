@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% if running %}{{ running|length }} run{{ 's' if running|length > 1 }} on the bench{% else %}The bench is idle{% endif %}</h1>
+  <p class="lede">Scores are read against {{ cfg.baseline.name }}, the baseline in {{ current_cfg }}. The blue tick on each scale marks the baseline's score.</p>
+</div>
+<div class="row">
+  <a class="btn primary" href="/run">Start a run</a>
+  <a class="btn" href="/report">Open the report</a>
+</div>
+
+<h2>Jobs <a class="aside" href="/jobs">All jobs</a></h2>
+<div data-poll="/fragments/jobs?limit=5" data-every="3000"><p class="empty">Loading jobs…</p></div>
+
+<h2>Latest results <a class="aside" href="/runs">All results</a></h2>
+{% include "_runs_table.html" with context %}
+
+<h2>Spent today</h2>
+{% if spend %}
+<div class="wrap"><table>
+  <tr><th>Model</th><th class="num">Requests</th><th class="num">Tokens in</th><th class="num">Tokens out</th><th class="num">Cost</th></tr>
+  {% for s in spend %}
+  <tr><td class="name">{{ s.model }}</td><td class="num">{{ s.requests }}</td><td class="num">{{ "{:,}".format(s.tokens_in) }}</td><td class="num">{{ "{:,}".format(s.tokens_out) }}</td>
+      <td class="num">{{ (s.cost|usd) if s.known else 'unknown price' }}</td></tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="empty">Nothing spent today.</p>{% endif %}
+{% endblock %}

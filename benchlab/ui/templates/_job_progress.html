@@ -1,0 +1,51 @@
+{% import "_ui.html" as ui %}
+<div class="status-line">
+  {{ ui.lamp(status) }}
+  <span class="quiet">{{ elapsed|dur }} since start</span>
+  <span class="row" style="margin-left:auto">
+  {% if status == 'running' %}
+    <form class="inline" method="post" action="/jobs/{{ job.id }}/stop" data-confirm="Stop this job? Progress is saved and Resume continues it."><button class="danger">Stop</button></form>
+  {% else %}
+    <form class="inline" method="post" action="/jobs/{{ job.id }}/resume"><button>{{ 'Run again' if status == 'done' else 'Resume' }}</button></form>
+  {% endif %}
+  </span>
+</div>
+{% if status == 'lost' %}<div class="notice fault">The job stopped without reporting how it ended (the machine restarted or the process was killed). Resume continues from the saved progress.</div>{% endif %}
+{% if status == 'budget reached' %}<div class="notice warn">A run reached its budget and stopped with its progress saved. Resume continues it under the same budget.</div>{% endif %}
+
+<h2>Progress</h2>
+<div class="wrap"><table>
+  <tr><th>Model and benchmark</th><th>Tasks</th><th class="num">Requests</th><th class="num">Tokens in / out</th><th>Spend</th><th class="num">Failed requests</th><th>Score</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td><span class="name">{{ r.model }}</span> on {{ r.bench }}{% if r.run %}<a class="sub" href="/runs/{{ r.run }}">Run folder</a>{% endif %}</td>
+    {% if not r.run %}
+      <td colspan="6" class="quiet">Waiting its turn. Pairs run one after another.</td>
+    {% else %}
+      {% set u = r.usage %}
+      <td style="min-width:150px">
+        {% if r.planned %}<span class="num">{{ r.done }} of {{ r.planned }}</span>
+          <div class="meter"><i style="width:{{ [100, (100 * r.done / r.planned)|round]|min }}%"></i></div>
+        {% elif r.done %}{{ r.done }} done
+        {% else %}<span class="quiet small">This harness reports progress in the log below.</span>{% endif %}
+      </td>
+      <td class="num">{{ u.n_requests }}</td>
+      <td class="num">{{ "{:,}".format(u.tokens_in) }} / {{ "{:,}".format(u.tokens_out) }}</td>
+      <td style="min-width:140px" class="num">
+        {% if u.cost_usd is none %}<span class="quiet">unknown price</span>
+        {% else %}{{ u.cost_usd|usd }}{% if job.budget_usd %} of {{ job.budget_usd|usd }}
+          <div class="meter {{ 'over' if u.cost_usd >= job.budget_usd }}"><i style="width:{{ [100, (100 * u.cost_usd / job.budget_usd)|round]|min }}%"></i></div>{% endif %}
+        {% endif %}
+      </td>
+      <td class="num">{% set bad = u.n_requests - u.n_ok %}{% if bad %}<span class="lamp fault">{{ bad }}</span>{% else %}0{% endif %}</td>
+      <td>{% set m = by_run.get(r.run) %}
+        {% if m and m.done %}{{ ui.readout(m.value, m.metric, m.base, m.is_base, m.pct, baseline_id) }}
+          {% for w in r.result.warnings %}<span class="sub tag warn">{{ w }}</span>{% endfor %}
+        {% else %}<span class="quiet">When it finishes</span>{% endif %}</td>
+    {% endif %}
+  </tr>
+  {% endfor %}
+</table></div>
+
+<h2>Log</h2>
+<pre class="log">{{ log or 'No output yet.' }}</pre>

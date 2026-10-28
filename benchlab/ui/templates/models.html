@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Models{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Models</h1>
+  <p class="lede">The models in {{ current_cfg }}. API keys stay in your <code>.env</code> file; this page only shows whether each one is set. Saving keeps the previous file as <code>{{ current_cfg }}.bak</code>.</p>
+</div>
+<div class="row"><a class="btn primary" href="/models/new">Add a model</a></div>
+
+{% set chat = cfg.chat_models() %}
+<form method="post" action="/models/roles" class="plate" style="margin-top:24px">
+  <h3>Roles</h3>
+  <p class="help">Three settings name a model. A model holding one of them can't be deleted or renamed until another model takes the role.</p>
+  <div class="fields">
+    <div><label for="role-base">Baseline <span class="hint">every score is compared to it</span></label>
+      <select id="role-base" name="baseline">{% for m in chat %}<option value="{{ m.id }}" {{ 'selected' if m.id == cfg.settings.baseline_model }}>{{ m.name }} ({{ m.id }})</option>{% endfor %}</select></div>
+    <div><label for="role-grader">BrowseComp grader <span class="hint">never grades itself</span></label>
+      <select id="role-grader" name="grader"><option value="" {{ 'selected' if not cfg.settings.grader_model }}>Same as the baseline</option>
+        {% for m in chat %}<option value="{{ m.id }}" {{ 'selected' if m.id == cfg.settings.grader_model }}>{{ m.name }} ({{ m.id }})</option>{% endfor %}</select></div>
+    <div><label for="role-user">τ²-bench user simulator <span class="hint">plays the customer</span></label>
+      <select id="role-user" name="user_model">{% for m in chat %}<option value="{{ m.id }}" {{ 'selected' if m.id == cfg.settings.tau2_user_model }}>{{ m.name }} ({{ m.id }})</option>{% endfor %}</select></div>
+  </div>
+  <div class="row" style="margin-top:16px"><button>Save roles</button>
+    <span class="quiet small">Changing the baseline changes every comparison in the report. Changing the simulator makes new τ² scores incomparable with older ones.</span></div>
+</form>
+
+<h2>{{ rows|length }} models <span class="aside">Test sends three small requests: chat, tool call, streamed</span></h2>
+<div class="wrap"><table>
+  <tr><th>Model</th><th>Endpoint</th><th>API key</th><th class="num">$ per 1M tokens, in / out</th><th>Connection</th><th></th></tr>
+  {% for r in rows %}{% set m = r.m %}
+  <tr>
+    <td><span class="name">{{ m.name }}</span>
+      <span class="sub">{{ m.id }}{% if m.id == cfg.settings.baseline_model %}, baseline{% endif %}{% if m.id == (cfg.settings.grader_model or cfg.settings.baseline_model) %}, grader{% endif %}{% if m.id == cfg.settings.tau2_user_model %}, user simulator{% endif %}{% if m.reference %}, published scores only{% endif %}{% if m.self_hosted %}, self-hosted{% endif %}{% if m.kind != 'chat' %}, {{ m.kind }}{% endif %}</span></td>
+    <td>{{ m.model }}<span class="sub">{{ m.base_url or m.provider }}</span></td>
+    <td>{% if r.key == 'set' %}<span class="lamp pass">{{ m.api_key_env }}</span>
+        {% elif r.key == 'missing' %}<span class="lamp fault">{{ m.api_key_env }} not set</span>
+        {% else %}<span class="quiet">none needed</span>{% endif %}</td>
+    <td class="num">{{ ("%g / %g"|format(m.price_in_per_mtok, m.price_out_per_mtok)) if m.has_prices else 'unknown' }}</td>
+    <td id="check-{{ m.id }}" style="min-width:190px">
+      {% if r.check %}{% with c = r.check %}{% include "_check.html" %}{% endwith %}{% else %}<span class="quiet">Not tested</span>{% endif %}
+    </td>
+    <td><div class="row end">
+      {% if not m.reference and m.kind == 'chat' %}<button data-post="/models/{{ m.id }}/check" data-target="#check-{{ m.id }}">Test</button>{% endif %}
+      <a class="btn" href="/models/{{ m.id }}/edit">Edit</a>
+      <form class="inline" method="post" action="/models/{{ m.id }}/delete" data-confirm="Delete {{ m.id }} from {{ current_cfg }}? A .bak copy of the file is kept."><button class="danger">Delete</button></form>
+    </div></td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% endblock %}

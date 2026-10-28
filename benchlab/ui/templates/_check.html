@@ -1,0 +1,7 @@
+{% if c.ok %}<span class="lamp pass">Connection works</span>{% else %}<span class="lamp fault">Connection problem</span>{% endif %}
+<span class="sub">Tested {{ c.at|ts }}</span>
+{% for p in c.probes %}
+<span class="sub num">{{ p.name|capitalize }}: {{ p.latency|num(2) }} s{% if p.ttft is not none %}, first token {{ p.ttft|num(2) }} s{% endif %}{% if not p.ok %}, <span class="lamp fault">{{ p.status }}</span>{% endif %}</span>
+{% endfor %}
+{% if c.tool_calling and c.tool_calling != 'ok' %}<span class="sub lamp fault">Tool calling: {{ c.tool_calling|replace('_', ' ') }}</span>{% endif %}
+{% for p in c.problems %}<span class="sub" style="color:var(--fault)">{{ p }}</span>{% endfor %}

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}BenchLab{% endblock %} – BenchLab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+{% set p = request.url.path %}
+<header class="faceplate">
+  <a class="wordmark" href="/">BenchLab</a>
+  <nav aria-label="Sections">
+    <a href="/" {{ 'aria-current=page' if p == '/' }}>Overview</a>
+    <a href="/run" {{ 'aria-current=page' if p == '/run' }}>New run</a>
+    <a href="/jobs" {{ 'aria-current=page' if p.startswith('/jobs') }}>Jobs{% if active_jobs %} <span class="count">{{ active_jobs }} running</span>{% endif %}</a>
+    <a href="/runs" {{ 'aria-current=page' if p.startswith('/runs') }}>Results</a>
+    <a href="/models" {{ 'aria-current=page' if p.startswith('/models') }}>Models</a>
+    <a href="/import" {{ 'aria-current=page' if p.startswith('/import') }}>Import</a>
+  </nav>
+  <form class="config" method="post" action="/config">
+    <label for="cfg">Config</label>
+    <select id="cfg" name="name" onchange="this.form.submit()">
+      {% for c in configs %}<option value="{{ c }}" {{ 'selected' if c == current_cfg }}>{{ c }}</option>{% endfor %}
+    </select>
+  </form>
+</header>
+<main>
+  {% if flash %}<div class="notice" role="status">{{ flash }}</div>{% endif %}
+  {% if flash_err %}<div class="notice fault" role="alert">{{ flash_err }}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{% import "_ui.html" as ui %}
+{% set rows = recent if recent is defined else rows %}
+{% if rows %}
+<div class="wrap"><table>
+  <tr><th>Model and benchmark</th><th>Score</th><th class="num">Tasks</th><th class="num">Errors</th><th class="num">Cost</th><th>Run</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td><span class="name">{{ r.model }}</span> on {{ r.bench }}
+      <span class="sub">{% if r.smoke %}smoke run{% endif %}{% if r.imported %}imported{% endif %}{% if r.warnings %}{{ ', ' if r.smoke or r.imported }}<span class="tag warn">{{ r.warnings }} warning{{ 's' if r.warnings > 1 }}</span>{% endif %}</span></td>
+    <td>{% if r.done %}{{ ui.readout(r.value, r.metric, r.base, r.is_base, r.pct, baseline_id) }}{% else %}<span class="lamp hold">Unfinished</span>{% endif %}</td>
+    <td class="num">{{ r.n if r.done else '' }}</td>
+    <td class="num">{% if r.done %}{% if r.errors %}<span class="lamp fault">{{ r.errors }}</span>{% else %}0{% endif %}{% endif %}</td>
+    <td class="num">{{ r.cost|usd if r.done else '' }}</td>
+    <td><a href="/runs/{{ r.name }}">{{ r.date or r.name }}</a></td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="empty">No results yet. <a href="/run">Start a run</a> to get the first one.</p>{% endif %}

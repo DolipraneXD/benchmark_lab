@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Import{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Import red-team results</h1>
+  <p class="lede">An outside lab's promptfoo CSV becomes the redteam benchmark for one model. Nothing is re-scored: BenchLab counts the lab's own verdicts, and tests the target never answered are kept apart as errors.</p>
+</div>
+{% if error %}<div class="notice fault" role="alert">{{ error }}</div>{% endif %}
+{% if result %}{% set r = result.res %}
+<div class="split" style="margin-bottom:28px">
+  <div>
+    {{ ui.readout(r.metrics.pass_rate, 'pass_rate', none, false, true, baseline_id, large=true) }}
+    <p class="quiet">Attacks resisted, out of the tests the lab graded</p>
+  </div>
+  <dl class="figures">
+    <div><dt>Passed</dt><dd>{{ r.metrics.n_pass|int }}</dd></div>
+    <div><dt>Failed</dt><dd>{{ r.metrics.n_fail|int }}</dd></div>
+    <div><dt>Never graded</dt><dd>{{ r.errors.api_errors }}</dd></div>
+  </dl>
+</div>
+{% for w in r.warnings %}<div class="notice warn">{{ w }}</div>{% endfor %}
+<p><a href="/runs/{{ result.run }}">Open the imported run</a>, or <a href="/runs">rebuild the report</a> to include it.</p>
+{% endif %}
+<form method="post" action="/import" enctype="multipart/form-data" class="plate">
+  <div class="fields">
+    <div><label for="i-file">CSV file</label><input id="i-file" type="file" name="file" accept=".csv,text/csv" required></div>
+    <div><label for="i-model">Which model the lab tested</label><select id="i-model" name="model">
+      {% for m in models %}<option value="{{ m.id }}">{{ m.name }} ({{ m.id }})</option>{% endfor %}</select></div>
+  </div>
+  <div class="row" style="margin-top:18px"><button class="primary">Import results</button></div>
+</form>
+{% endblock %}

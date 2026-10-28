@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Jobs{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Jobs</h1>
+  <p class="lede">Every run started from the panel. They keep going when you close this tab or stop the panel.</p>
+</div>
+<div data-poll="/fragments/jobs?limit=100" data-every="3000"><p class="empty">Loading jobs…</p></div>
+{% endblock %}

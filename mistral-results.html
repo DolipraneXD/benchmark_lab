@@ -5,20 +5,19 @@ h1{margin:0 0 4px} h2{margin:32px 0 8px;font-size:1.15rem} .muted{color:#666;fon
 table{border-collapse:collapse;font-size:.85rem;margin-top:8px} th,td{border:1px solid #ddd;padding:4px 8px;text-align:right;vertical-align:top}
 th{background:#f3f3f3;position:sticky;top:0} td:first-child,th:first-child{text-align:left;font-weight:600;white-space:nowrap}
 .pos{color:#0a7a2f} .neg{color:#b3261e} .sub{display:block;color:#777;font-size:.72rem;font-weight:400}
-.base{background:#fbfbe6} .smoke{outline:2px dashed #e0a800} .na{color:#bbb}
+tr.ref td{font-style:italic;color:#555;background:#f7f7fb} .base{background:#fbfbe6} .smoke{outline:2px dashed #e0a800} .na{color:#bbb}
 ul.susp li{margin:4px 0} .hint{color:#555} code{background:#f3f3f3;padding:0 3px}
 .wrap{overflow-x:auto}
 </style></head><body>
-<h1>BenchLab report</h1><div class='muted'>generated 2026-10-22 11:21 UTC · benchlab 0.1.0 · baseline <b>Claude Sonnet 5.5</b> (claude) · 3 (model, bench) results from 4 finished runs in <code>runs</code>. Cells: score (delta vs baseline in points); n = tasks×trials, $ = run cost from the usage logs, err = timeouts+API errors+malformed tool calls. Dashed outline = smoke run only.</div>
+<h1>BenchLab report</h1><div class='muted'>generated 2026-10-28 10:20 UTC · benchlab 0.1.0 · baseline <b>Mistral Large 4</b> (ml4) · 3 (model, bench) results from 4 finished runs in <code>runs</code>. Cells: score (delta vs baseline in points); n = tasks×trials, $ = run cost from the usage logs, err = timeouts+API errors+malformed tool calls. Dashed outline = smoke run only. Italic rows = reference models: published scores, not measured by BenchLab and not comparable point-for-point (different harness settings and subsets).</div>
 <h2>Scores: models × benchmarks</h2><div class='wrap'><table><tr><th>model</th>
 <th title='inspect_evals/bfcl'>BFCL<span class='sub'>bfcl</span></th>
 <th title='harbor/terminal-bench'>Terminal-Bench 2.x<span class='sub'>tb</span></th>
 <th>TTFT p50 s</th><th>core cost $</th></tr>
-<tr><td class=base>Claude Sonnet 5.5<span class='sub'>claude</span></td>
-<td class="na">-</td>
-<td class="na">-</td>
-<td class="na">-</td>
-<td><span class=na>-</span></td></tr>
+<tr class='ref'><td>Claude Sonnet 5.5<span class='sub'>claude · reference, published</span></td>
+<td class=na>-</td>
+<td class=na>-</td>
+<td class=na>-</td><td class=na>-</td></tr>
 <tr><td>GLM-5.3<span class='sub'>glm</span></td>
 <td class="na">-</td>
 <td class="na">-</td>
@@ -44,7 +43,7 @@ ul.susp li{margin:4px 0} .hint{color:#555} code{background:#f3f3f3;padding:0 3px
 <td class="na">-</td>
 <td class="na">-</td>
 <td><span class=na>-</span></td></tr>
-<tr><td>Mistral Large 4<span class='sub'>ml4</span></td>
+<tr><td class=base>Mistral Large 4<span class='sub'>ml4</span></td>
 <td class="na">-</td>
 <td class="na">-</td>
 <td class="na">-</td>
@@ -53,6 +52,11 @@ ul.susp li{margin:4px 0} .hint{color:#555} code{background:#f3f3f3;padding:0 3px
 <td class="smoke">100.0<span class="sub">n=3 SMOKE</span></td>
 <td class="smoke">0.0<span class="sub">n=2 err=2 SMOKE</span></td>
 <td class="">0.96<span class="sub">n=10×3</span></td>
+<td><span class=na>-</span></td></tr>
+<tr><td>MiniMax M3.1 Flash (Xkiro)<span class='sub'>minimax_xkiro</span></td>
+<td class="na">-</td>
+<td class="na">-</td>
+<td class="na">-</td>
 <td><span class=na>-</span></td></tr>
 <tr><td>Laguna S 2.1<span class='sub'>laguna · self-hosted</span></td>
 <td class="na">-</td>
@@ -79,10 +83,6 @@ ul.susp li{margin:4px 0} .hint{color:#555} code{background:#f3f3f3;padding:0 3px
 <th>bfcl</th>
 <th>tb</th>
 </tr>
-<tr><td>claude</td>
-<td class=na>-</td>
-<td class=na>-</td>
-</tr>
 <tr><td>glm</td>
 <td class=na>-</td>
 <td class=na>-</td>
@@ -108,6 +108,10 @@ ul.susp li{margin:4px 0} .hint{color:#555} code{background:#f3f3f3;padding:0 3px
 <td class=na>-</td>
 </tr>
 <tr><td>mistral_xkiro</td>
+<td class=na>-</td>
+<td class=na>-</td>
+</tr>
+<tr><td>minimax_xkiro</td>
 <td class=na>-</td>
 <td class=na>-</td>
 </tr>

@@ -27,3 +27,6 @@ retrieval/docs/
 retrieval/queries.jsonl
 runs_xkiro/
 results_xkiro/
+
+# benchlab ui backups of edited model registries
+*.yaml.bak

@@ -1,0 +1,14 @@
+{% import "_ui.html" as ui %}
+{% if rows %}
+<div class="wrap"><table>
+  <tr><th>Job</th><th>Status</th><th class="num">Budget per run</th><th>Started</th></tr>
+  {% for j, st in rows %}
+  <tr>
+    <td><a class="name" href="/jobs/{{ j.id }}">{{ j.label }}</a></td>
+    <td>{{ ui.lamp(st) }}</td>
+    <td class="num">{{ j.budget_usd|usd if j.budget_usd is not none else 'no cap' }}</td>
+    <td class="quiet">{{ j.started_at|ts }}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="empty">No jobs yet. Runs you start here keep going when you close the panel.</p>{% endif %}

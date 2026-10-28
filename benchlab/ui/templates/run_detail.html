@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ conf.model_id }} on {{ conf.bench }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ conf.model_id }} on {{ conf.bench }}</h1>
+  <p class="lede">{{ 'Smoke run, ' if conf.smoke }}{{ 'imported, ' if (conf.extra or {}).imported }}created {{ (conf.created_at or '')[:16]|replace('T', ' ') }}. Folder <code>{{ name }}</code></p>
+</div>
+
+<div class="split">
+  <div>
+    {% if res %}
+      {{ ui.readout(me.value, me.metric, me.base, me.is_base, me.pct, baseline_id, large=true) }}
+      <p class="quiet">{{ res.primary_metric|replace('_', ' ') }} over {{ res.n_tasks }} tasks{% if res.trials > 1 %}, {{ res.trials }} trials each{% endif %}</p>
+    {% else %}
+      <p><span class="lamp hold" style="font-size:var(--s-24)">Unfinished</span></p>
+      <p class="quiet">{{ state.completed|length }} tasks done. Start the same run again to continue it.</p>
+    {% endif %}
+  </div>
+  <dl class="figures grid2">
+    {% if (conf.extra or {}).imported %}
+    <div><dt>Tests</dt><dd>{{ res.n_tasks }}</dd></div>
+    <div><dt>Never graded</dt><dd style="{{ 'color:var(--fault)' if res.errors.total }}">{{ res.errors.total }}</dd></div>
+    {% else %}
+    <div><dt>Cost</dt><dd>{{ (res.cost_usd|usd) if res else (usage.cost_usd|usd) }}</dd></div>
+    <div><dt>Wall time</dt><dd>{{ (res.wall_time_s if res else state.elapsed_s)|dur }}</dd></div>
+    <div><dt>Requests</dt><dd>{{ usage.n_requests }}</dd></div>
+    {% if res %}<div><dt>Errors</dt><dd style="{{ 'color:var(--fault)' if res.errors.total }}">{{ res.errors.total }}</dd></div>{% endif %}
+    {% endif %}
+  </dl>
+</div>
+
+{% if res and res.warnings %}
+<h2>Warnings</h2>
+{% for w in res.warnings %}<div class="notice warn">{{ w }}</div>{% endfor %}
+{% endif %}
+{% if res and res.note %}<h2>How it was measured</h2><p>{{ res.note }}</p>{% endif %}
+
+{% if res %}
+<h2>All metrics</h2>
+<div class="wrap"><table>
+  <tr><th>Metric</th><th class="num">Value</th></tr>
+  {% for k, v in res.metrics.items() %}<tr><td>{{ k }}</td><td class="num">{{ v|num(2) if v is not none else 'none' }}</td></tr>{% endfor %}
+</table></div>
+{% if res.errors.total %}<p class="quiet small">Errors: {{ res.errors.timeouts }} timeouts, {{ res.errors.api_errors }} API errors, {{ res.errors.malformed_tool_calls }} malformed tool calls.</p>{% endif %}
+{% endif %}
+
+<h2>Settings</h2>
+<dl class="kv">
+  <dt>Request parameters</dt><dd><code>{{ conf.request_params|tojson }}</code></dd>
+  <dt>Exceptions for this model</dt><dd><code>{{ conf.per_model_exceptions|tojson }}</code></dd>
+  <dt>Subset</dt><dd>{{ conf.subset.name or 'default' }}, {{ conf.subset.n }} tasks</dd>
+  <dt>Trials</dt><dd>{{ conf.trials }}</dd>
+  <dt>BenchLab</dt><dd>{{ conf.benchlab_version }} at commit {{ (conf.benchlab_commit or 'unknown')[:8] }}</dd>
+  <dt>Raw files</dt><dd>{{ raw|join(', ') or 'none' }}</dd>
+</dl>
+<h2>Harness</h2>
+<pre class="log">{{ (res.harness if res else conf.harness)|tojson(indent=2)|redact }}</pre>
+{% endblock %}

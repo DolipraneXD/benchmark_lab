@@ -1,0 +1,791 @@
+"""The control panel server (FastAPI + Jinja2 pages, a little polling JS).
+
+Local only, one user: it binds to 127.0.0.1 and every request must carry the
+session cookie set from the one-time link ``benchlab ui`` prints, so other
+websites open in the browser can't read pages or start runs (cookie is
+SameSite=Strict, POSTs also need a same-origin ``Origin``, the Host header is
+checked against DNS rebinding). Runs are started as ``benchlab run`` processes
+(see jobs.py), so they behave exactly like CLI runs.
+"""
+
+from __future__ import annotations
+
+import hmac
+import os
+import shutil
+import sys
+import tempfile
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import yaml
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from benchlab import __version__, registry
+from benchlab.config import BenchConfig, load_config
+from benchlab.redact import redact
+from benchlab.runs import RunDir
+from benchlab.ui import jobs as J
+from benchlab.ui import models_store
+from benchlab.usage import UsageLog
+
+HERE = Path(__file__).parent
+COOKIE = "benchlab_ui"
+CFG_COOKIE = "benchlab_cfg"
+PROVIDERS = ("openai_compatible", "anthropic", "bedrock")
+KINDS = ("chat", "embedding", "reranker")
+CsvFile = File(...)
+NON_PCT_BENCHES = {"ttft", "serving"}  # seconds / tokens per second: no 0-100 scale
+
+
+def discover_configs(root: Path) -> list[str]:
+    return sorted(p.name for p in root.glob("models*.yaml"))
+
+
+def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> FastAPI:
+    root = Path(root or Path.cwd()).resolve()
+    app = FastAPI(title="BenchLab", docs_url=None, redoc_url=None, openapi_url=None)
+    app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+    tpl = Jinja2Templates(directory=HERE / "templates")
+    tpl.env.filters["redact"] = lambda s: redact(str(s))
+    tpl.env.filters["usd"] = lambda v: (
+        "-" if v is None else (f"${v:.4f}" if v < 0.01 else f"${v:.2f}")
+    )
+    tpl.env.filters["num"] = lambda v, nd=1: "-" if v is None else f"{float(v):.{nd}f}"
+    tpl.env.filters["ts"] = lambda t: datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M")
+    tpl.env.filters["dur"] = _dur
+    allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    last_checks: dict[tuple[str, str], dict[str, Any]] = {}
+
+    # ---- guard: host, session cookie, same-origin POSTs ------------------------------
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        host = request.headers.get("host", "")
+        if host not in allowed_hosts:
+            return PlainTextResponse("bad host", status_code=403)
+        q = request.query_params.get("token")
+        if q is not None:
+            if not hmac.compare_digest(q, token):
+                return PlainTextResponse("invalid link", status_code=403)
+            r = RedirectResponse(request.url.path, status_code=303)
+            r.set_cookie(COOKIE, token, httponly=True, samesite="strict")
+            return r
+        if not request.url.path.startswith("/static/"):
+            if not hmac.compare_digest(request.cookies.get(COOKIE, ""), token):
+                return PlainTextResponse(
+                    "Open the link `benchlab ui` printed in the terminal.", status_code=403
+                )
+        if request.method not in ("GET", "HEAD"):
+            origin = request.headers.get("origin")
+            if origin and origin.split("://", 1)[-1] not in allowed_hosts:
+                return PlainTextResponse("cross-origin request refused", status_code=403)
+        return await call_next(request)
+
+    # ---- helpers ----------------------------------------------------------------------
+    def cfg_name(request: Request) -> str:
+        names = discover_configs(root)
+        c = request.cookies.get(CFG_COOKIE)
+        if c in names:
+            return c
+        return "models.yaml" if "models.yaml" in names else (names[0] if names else "models.yaml")
+
+    def cfg_path(request: Request) -> Path:
+        return root / cfg_name(request)
+
+    def load(request: Request) -> tuple[BenchConfig | None, str | None]:
+        try:
+            return load_config(cfg_path(request)), None
+        except Exception as e:  # noqa: BLE001
+            return None, redact(str(e))
+
+    def runs_dir(cfg: BenchConfig) -> Path:
+        return root / cfg.settings.runs_dir
+
+    def page(request: Request, template: str, **ctx: Any) -> HTMLResponse:
+        cfg = ctx.get("cfg")
+        base = {
+            "configs": discover_configs(root),
+            "baseline_id": cfg.settings.baseline_model if cfg else "",
+            "current_cfg": cfg_name(request),
+            "version": __version__,
+            "flash": request.query_params.get("msg"),
+            "flash_err": request.query_params.get("err"),
+            "active_jobs": sum(
+                1 for j in J.list_jobs(runs_dir(cfg)) if J.status(runs_dir(cfg), j) == "running"
+            )
+            if cfg
+            else 0,
+        }
+        return tpl.TemplateResponse(request, template, {**base, **ctx})
+
+    def back(url: str, msg: str | None = None, err: str | None = None) -> RedirectResponse:
+        from urllib.parse import urlencode
+
+        q = urlencode({k: v for k, v in (("msg", msg), ("err", err)) if v})
+        return RedirectResponse(url + (("?" + q) if q else ""), status_code=303)
+
+    def broken(request: Request, error: str) -> HTMLResponse:
+        return page(request, "broken.html", error=error)
+
+    # ---- config switch -----------------------------------------------------------------
+    @app.post("/config")
+    def switch_config(name: str = Form(...)):
+        r = back("/")
+        if name in discover_configs(root):
+            r.set_cookie(CFG_COOKIE, name, httponly=True, samesite="strict")
+        return r
+
+    # ---- dashboard ---------------------------------------------------------------------
+    @app.get("/", response_class=HTMLResponse)
+    def dashboard(request: Request):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        rd = runs_dir(cfg)
+        rows = _run_rows(rd, cfg.settings.baseline_model)
+        running = [j for j in J.list_jobs(rd) if J.status(rd, j) == "running"]
+        recent = rows[:12]
+        return page(
+            request,
+            "dashboard.html",
+            cfg=cfg,
+            recent=recent,
+            running=running,
+            spend=_spend_today(rd),
+        )
+
+    @app.get("/fragments/jobs", response_class=HTMLResponse)
+    def jobs_fragment(request: Request, limit: int = 10):
+        cfg, e = load(request)
+        if not cfg:
+            return HTMLResponse(f"<p class=err>{e}</p>")
+        rd = runs_dir(cfg)
+        rows = [(j, J.status(rd, j)) for j in J.list_jobs(rd)[:limit]]
+        return tpl.TemplateResponse(request, "_jobs.html", {"rows": rows})
+
+    # ---- models ------------------------------------------------------------------------
+    @app.get("/models", response_class=HTMLResponse)
+    def models_page(request: Request):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        name = cfg_name(request)
+        rows = []
+        for m in cfg.models:
+            key = (
+                "n/a"
+                if not m.api_key_env
+                else ("set" if os.environ.get(m.api_key_env) else "missing")
+            )
+            rows.append({"m": m, "key": key, "check": last_checks.get((name, m.id))})
+        return page(request, "models.html", cfg=cfg, rows=rows)
+
+    @app.get("/models/new", response_class=HTMLResponse)
+    def model_new(request: Request):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        return page(request, "model_form.html", cfg=cfg, m=None, form=_form_values({}), err=None)
+
+    @app.get("/models/{model_id}/edit", response_class=HTMLResponse)
+    def model_edit(request: Request, model_id: str):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        try:
+            raw = models_store.raw_model(cfg_path(request), model_id)
+        except KeyError:
+            return back("/models", err=f"unknown model {model_id}")
+        return page(
+            request, "model_form.html", cfg=cfg, m=model_id, form=_form_values(raw), err=None
+        )
+
+    @app.post("/models/save")
+    async def model_save(request: Request):
+        form = dict(await request.form())
+        original = form.pop("original_id", "") or None
+        cfg, e = load(request)
+        try:
+            data = _parse_model_form(form)
+            models_store.save_model(cfg_path(request), data, original)
+        except ValueError as ex:
+            return page(
+                request,
+                "model_form.html",
+                cfg=cfg,
+                m=original,
+                form=form,
+                err=redact(str(ex)),
+            )
+        return back("/models", msg=f"saved {data['id']} in {cfg_name(request)}")
+
+    @app.post("/models/{model_id}/delete")
+    def model_delete(request: Request, model_id: str):
+        try:
+            models_store.delete_model(cfg_path(request), model_id)
+        except ValueError as ex:
+            return back("/models", err=redact(str(ex)))
+        return back("/models", msg=f"Deleted {model_id} from {cfg_name(request)}.")
+
+    @app.post("/models/roles")
+    def model_roles(
+        request: Request,
+        baseline: str = Form(...),
+        grader: str = Form(""),
+        user_model: str = Form(...),
+    ):
+        try:
+            models_store.save_roles(cfg_path(request), baseline, grader or None, user_model)
+        except ValueError as ex:
+            return back("/models", err=f"Roles not saved: {redact(str(ex))}")
+        return back("/models", msg="Roles saved.")
+
+    @app.post("/models/{model_id}/check", response_class=HTMLResponse)
+    def model_check(request: Request, model_id: str):
+        from benchlab.check import run_check
+
+        cfg, e = load(request)
+        if not cfg:
+            return HTMLResponse(f"<span class=err>{e}</span>")
+        try:
+            spec = cfg.get(model_id)
+            log = UsageLog(runs_dir(cfg) / "checks.jsonl")
+            rep = run_check(cfg, spec, timeout=60.0, usage_log=log)
+            probes = []
+            for name, res in (("chat", rep.chat), ("tool call", rep.tool), ("stream", rep.stream)):
+                if res is None:
+                    continue
+                probes.append(
+                    {
+                        "name": name,
+                        "ok": res.ok,
+                        "status": res.status,
+                        "latency": res.latency_s,
+                        "ttft": res.ttft_s,
+                        "cost": res.cost_usd,
+                        "detail": redact(res.error_msg or "")[:160],
+                    }
+                )
+            result = {
+                "ok": rep.ok,
+                "at": time.time(),
+                "tool_calling": rep.tool_calling,
+                "problems": [redact(p) for p in rep.problems],
+                "probes": probes,
+            }
+        except Exception as ex:  # noqa: BLE001 - shown to the user, not raised
+            result = {"ok": False, "at": time.time(), "problems": [redact(str(ex))], "probes": []}
+        last_checks[(cfg_name(request), model_id)] = result
+        return tpl.TemplateResponse(request, "_check.html", {"c": result})
+
+    # ---- new run -----------------------------------------------------------------------
+    @app.get("/run", response_class=HTMLResponse)
+    def run_page(request: Request):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        benches = [b for b in registry.BENCHES.values() if b.adapter is not None]
+        return page(
+            request,
+            "run.html",
+            cfg=cfg,
+            models=cfg.chat_models() + [m for m in cfg.models if m.kind != "chat"],
+            benches=benches,
+            stages=registry.STAGE_BENCHES,
+        )
+
+    def _selection(form: dict[str, Any]) -> dict[str, Any]:
+        models = form.getlist("models") if hasattr(form, "getlist") else form.get("models", [])
+        benches = form.getlist("benches") if hasattr(form, "getlist") else form.get("benches", [])
+        trials = (form.get("trials") or "").strip()
+        budget = (form.get("budget") or "").strip()
+        return {
+            "models": [m for m in models if m],
+            "benches": [b for b in benches if b],
+            "trials": int(trials) if trials else None,
+            "subset": (form.get("subset") or "").strip() or None,
+            "smoke": form.get("smoke") == "on",
+            "budget": float(budget) if budget else None,
+        }
+
+    def _plan(cfg: BenchConfig, sel: dict[str, Any]):
+        from benchlab.planning import plan_rows
+
+        if not sel["models"] or not sel["benches"]:
+            raise ValueError("pick at least one model and one benchmark")
+        specs = [cfg.get(m) for m in sel["models"]]
+        benches = registry.select_benches(",".join(sel["benches"]))
+        return plan_rows(cfg, specs, benches, sel["trials"], sel["subset"], sel["smoke"])
+
+    @app.post("/run/plan", response_class=HTMLResponse)
+    async def run_plan(request: Request):
+        cfg, e = load(request)
+        if not cfg:
+            return HTMLResponse(f"<p class=err>{e}</p>")
+        try:
+            sel = _selection(await request.form())
+            rows = _plan(cfg, sel)
+        except (ValueError, KeyError) as ex:
+            return HTMLResponse(f"<p class=err>{redact(str(ex))}</p>")
+        busy = J.running_pairs(runs_dir(cfg))
+        total = sum(r[5] for r in rows if r[5] is not None)
+        return tpl.TemplateResponse(
+            request,
+            "_plan.html",
+            {
+                "rows": rows,
+                "total": total,
+                "unknown": any(r[5] is None for r in rows),
+                "busy": busy,
+                "sel": sel,
+            },
+        )
+
+    @app.post("/run/start")
+    async def run_start(request: Request):
+        cfg, e = load(request)
+        if not cfg:
+            return back("/run", err=e)
+        try:
+            sel = _selection(await request.form())
+            rows = _plan(cfg, sel)
+        except (ValueError, KeyError) as ex:
+            return back("/run", err=redact(str(ex)))
+        pairs = [[m.id, b.key] for m, b, adapter_cls, *_ in rows if adapter_cls is not None]
+        if not pairs:
+            return back("/run", err="nothing to run: no integrated (model, benchmark) pair")
+        rd = runs_dir(cfg)
+        clash = {tuple(p) for p in pairs} & J.running_pairs(rd)
+        if clash:
+            txt = ", ".join(f"{m} × {b}" for m, b in sorted(clash))
+            return back("/run", err=f"already running: {txt}")
+        job = _start_job(cfg, request, sel, pairs)
+        return back(f"/jobs/{job.id}", msg="started")
+
+    def _start_job(cfg: BenchConfig, request: Request, sel: dict[str, Any], pairs) -> J.Job:
+        models = sorted({m for m, _ in pairs})
+        benches = sorted({b for _, b in pairs})
+        argv = [
+            sys.executable,
+            "-m",
+            "benchlab.cli",
+            "run",
+            "-c",
+            str(cfg_path(request)),
+            "-m",
+            ",".join(models),
+            "-b",
+            ",".join(benches),
+        ]
+        if sel["trials"] is not None:
+            argv += ["--trials", str(sel["trials"])]
+        if sel["subset"]:
+            argv += ["--subset", sel["subset"]]
+        if sel["smoke"]:
+            argv += ["--smoke"]
+        if sel["budget"] is not None:
+            argv += ["--budget-usd", str(sel["budget"])]
+        job = J.Job(
+            id=J.new_id(),
+            argv=argv,
+            config=cfg_name(request),
+            pairs=pairs,
+            started_at=time.time(),
+            budget_usd=sel["budget"],
+            smoke=sel["smoke"],
+            label=f"{','.join(models)} × {','.join(benches)}"
+            + (" (smoke)" if sel["smoke"] else ""),
+            extra={"selection": sel},
+        )
+        return J.start(runs_dir(cfg), job, cwd=root)
+
+    # ---- jobs --------------------------------------------------------------------------
+    @app.get("/jobs", response_class=HTMLResponse)
+    def jobs_page(request: Request):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        return page(request, "jobs.html", cfg=cfg)
+
+    @app.get("/jobs/{job_id}", response_class=HTMLResponse)
+    def job_page(request: Request, job_id: str):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        try:
+            job = J.load(runs_dir(cfg), job_id)
+        except FileNotFoundError:
+            return back("/jobs", err=f"no job {job_id} in {cfg_name(request)}")
+        return page(request, "job.html", cfg=cfg, job=job, cmd=_cmd_text(job.argv, root))
+
+    @app.get("/fragments/jobs/{job_id}", response_class=HTMLResponse)
+    def job_fragment(request: Request, job_id: str):
+        cfg, e = load(request)
+        if not cfg:
+            return HTMLResponse(f"<p class=err>{e}</p>")
+        rd = runs_dir(cfg)
+        job = J.load(rd, job_id)
+        by_run = {x["name"]: x for x in _run_rows(rd, cfg.settings.baseline_model)}
+        return tpl.TemplateResponse(
+            request,
+            "_job_progress.html",
+            {
+                "job": job,
+                "status": J.status(rd, job),
+                "rows": J.progress(rd, job),
+                "log": redact(J.log_tail(rd, job)),
+                "elapsed": J.age(job),
+                "by_run": by_run,
+                "baseline_id": cfg.settings.baseline_model,
+            },
+        )
+
+    @app.post("/jobs/{job_id}/stop")
+    def job_stop(request: Request, job_id: str):
+        cfg, e = load(request)
+        if not cfg:
+            return back("/jobs", err=e)
+        job = J.load(runs_dir(cfg), job_id)
+        ok = J.stop(runs_dir(cfg), job)
+        return back(
+            f"/jobs/{job_id}",
+            msg="stop sent: the run saves its progress and exits" if ok else None,
+            err=None if ok else "job is not running",
+        )
+
+    @app.post("/jobs/{job_id}/resume")
+    def job_resume(request: Request, job_id: str):
+        cfg, e = load(request)
+        if not cfg:
+            return back("/jobs", err=e)
+        rd = runs_dir(cfg)
+        old = J.load(rd, job_id)
+        if J.status(rd, old) == "running":
+            return back(f"/jobs/{job_id}", err="still running")
+        clash = {tuple(p) for p in old.pairs} & J.running_pairs(rd)
+        if clash:
+            return back(f"/jobs/{job_id}", err="another job is running these pairs")
+        job = J.Job(
+            id=J.new_id(),
+            argv=old.argv,
+            config=old.config,
+            pairs=old.pairs,
+            started_at=time.time(),
+            budget_usd=old.budget_usd,
+            smoke=old.smoke,
+            label=old.label,
+            extra={**old.extra, "resumes": old.id},
+        )
+        J.start(rd, job, cwd=root)
+        return back(f"/jobs/{job.id}", msg=f"resumed from job {old.id}")
+
+    # ---- runs / results ----------------------------------------------------------------
+    @app.get("/runs", response_class=HTMLResponse)
+    def runs_page(request: Request, model: str = "", bench: str = ""):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        rows = [
+            r
+            for r in _run_rows(runs_dir(cfg), cfg.settings.baseline_model)
+            if (not model or r["model"] == model) and (not bench or r["bench"] == bench)
+        ]
+        rep = root / cfg.settings.results_dir / "report.html"
+        return page(
+            request,
+            "runs.html",
+            cfg=cfg,
+            rows=rows,
+            model=model,
+            bench=bench,
+            report_at=rep.stat().st_mtime if rep.exists() else None,
+        )
+
+    @app.get("/runs/{name}", response_class=HTMLResponse)
+    def run_detail(request: Request, name: str):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        p = runs_dir(cfg) / name
+        if Path(name).name != name or not (p / RunDir.CONFIG).exists():
+            return back("/runs", err=f"no run {name}")
+        r = RunDir(p)
+        res = r.read_result() if r.has_result() else None
+        me = next(
+            (x for x in _run_rows(runs_dir(cfg), cfg.settings.baseline_model) if x["name"] == name),
+            {},
+        )
+        return page(
+            request,
+            "run_detail.html",
+            cfg=cfg,
+            name=name,
+            conf=r.read_config(),
+            res=res,
+            state=r.state(),
+            usage=r.usage_log.summarize().as_dict(),
+            raw=sorted(x.name for x in r.raw_dir.iterdir()) if r.raw_dir.exists() else [],
+            me=me,
+        )
+
+    @app.post("/report")
+    def report_build(request: Request):
+        from benchlab.report import build_report
+
+        cfg, e = load(request)
+        if not cfg:
+            return back("/runs", err=e)
+        out = root / cfg.settings.results_dir / "report.html"
+        try:
+            rep = build_report(cfg, out)
+        except Exception as ex:  # noqa: BLE001
+            return back("/runs", err=f"report failed: {redact(str(ex))}")
+        return back(
+            "/runs",
+            msg=f"report rebuilt: {len(rep.collected.entries)} results, "
+            f"{len(rep.suspicious)} suspicious",
+        )
+
+    @app.get("/report")
+    def report_view(request: Request):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        p = root / cfg.settings.results_dir / "report.html"
+        if not p.exists():
+            return back("/runs", err="no report yet: rebuild it first")
+        return FileResponse(p, media_type="text/html")
+
+    # ---- import ------------------------------------------------------------------------
+    @app.get("/import", response_class=HTMLResponse)
+    def import_page(request: Request):
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        return page(request, "import.html", cfg=cfg, models=cfg.chat_models(), result=None)
+
+    @app.post("/import", response_class=HTMLResponse)
+    def import_post(request: Request, model: str = Form(...), file: UploadFile = CsvFile):
+        from benchlab.adapters.redteam import import_csv
+        from benchlab.results import append_result
+
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        fname = Path(file.filename or "redteam.csv").name
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td) / fname
+            with open(tmp, "wb") as f:
+                shutil.copyfileobj(file.file, f)
+            try:
+                rd, res = import_csv(cfg, cfg.get(model), tmp)
+            except (ValueError, KeyError) as ex:
+                return page(
+                    request,
+                    "import.html",
+                    cfg=cfg,
+                    models=cfg.chat_models(),
+                    result=None,
+                    error=redact(str(ex)),
+                )
+        append_result(root / cfg.settings.results_dir, res, rd)
+        return page(
+            request,
+            "import.html",
+            cfg=cfg,
+            models=cfg.chat_models(),
+            result={"run": rd.name, "res": res},
+        )
+
+    return app
+
+
+# --------------------------------------------------------------------------- #
+def _dur(s: float | None) -> str:
+    if s is None:
+        return "-"
+    s = int(s)
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h}h{m:02d}m" if h else (f"{m}m{sec:02d}s" if m else f"{sec}s")
+
+
+def _cmd_text(argv: list[str], root: Path) -> str:
+    """The equivalent terminal command, for copy/paste."""
+    a = list(argv)
+    if a[:3] == [sys.executable, "-m", "benchlab.cli"]:
+        a = ["benchlab", *a[3:]]
+    return " ".join(
+        str(Path(x).relative_to(root)) if x.startswith(str(root) + "/") else x for x in a
+    )
+
+
+def _run_rows(rd: Path, baseline_id: str = "") -> list[dict[str, Any]]:
+    """Run folders newest first, each with the baseline model's score on the same bench
+    (its newest finished run, a real run preferred over a smoke run) for the readout."""
+    rows = []
+    for r in sorted(RunDir.list_runs(rd), key=lambda r: r.name, reverse=True):
+        try:
+            c = r.read_config()
+        except Exception:  # noqa: BLE001
+            continue
+        row = {
+            "name": r.name,
+            "model": c.get("model_id"),
+            "bench": c.get("bench"),
+            "smoke": c.get("smoke"),
+            "imported": bool((c.get("extra") or {}).get("imported")),
+            "date": (c.get("created_at") or "")[:16].replace("T", " "),
+            "done": False,
+        }
+        if r.has_result():
+            try:
+                res = r.read_result()
+            except Exception:  # noqa: BLE001
+                rows.append(row)
+                continue
+            row.update(
+                done=True,
+                metric=res.get("primary_metric"),
+                value=res["metrics"].get(res.get("primary_metric")),
+                n=res.get("n_tasks"),
+                cost=res.get("cost_usd"),
+                errors=(res.get("errors") or {}).get("total", 0),
+                warnings=len(res.get("warnings") or []),
+                pct=row["bench"] not in NON_PCT_BENCHES,
+            )
+        rows.append(row)
+    base: dict[str, float] = {}
+    for smoke_ok in (False, True):
+        for r in rows:
+            if (
+                r["done"]
+                and r["model"] == baseline_id
+                and r.get("value") is not None
+                and (smoke_ok or not r["smoke"])
+            ):
+                base.setdefault(r["bench"], r["value"])
+    for r in rows:
+        r["is_base"] = r["model"] == baseline_id
+        r["base"] = base.get(r["bench"])
+    return rows
+
+
+def _spend_today(rd: Path) -> list[dict[str, Any]]:
+    """Requests / tokens / cost per model since local midnight, from every usage log."""
+    midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    logs = [rd / "checks.jsonl", rd / "proxy_usage.jsonl"]
+    if rd.exists():
+        logs += [
+            d / RunDir.USAGE
+            for d in rd.iterdir()
+            if d.is_dir()
+            and (d / RunDir.USAGE).exists()
+            and (d / RunDir.USAGE).stat().st_mtime >= midnight
+        ]
+    per: dict[str, dict[str, Any]] = {}
+    for p in logs:
+        for rec in UsageLog(p).records():
+            if (rec.get("ts") or 0) < midnight:
+                continue
+            d = per.setdefault(
+                rec.get("model_id", "?"),
+                {"requests": 0, "tokens_in": 0, "tokens_out": 0, "cost": 0.0, "known": True},
+            )
+            d["requests"] += 1
+            d["tokens_in"] += int(rec.get("tokens_in") or 0)
+            d["tokens_out"] += int(rec.get("tokens_out") or 0)
+            if rec.get("cost_usd") is None:
+                d["known"] = d["known"] and not (rec.get("tokens_in") or rec.get("tokens_out"))
+            else:
+                d["cost"] += float(rec["cost_usd"])
+    return [{"model": k, **v} for k, v in sorted(per.items())]
+
+
+def _form_values(raw: dict[str, Any]) -> dict[str, str]:
+    """Model entry -> strings for the form."""
+
+    def s(v: Any) -> str:
+        if v is None:
+            return ""
+        if isinstance(v, bool):
+            return "on" if v else ""
+        if isinstance(v, list):
+            return ", ".join(str(x) for x in v)
+        if isinstance(v, dict):
+            return yaml.safe_dump(v, default_flow_style=True, sort_keys=False).strip() if v else ""
+        return str(v)
+
+    out = {k: s(raw.get(k)) for k in models_store.EDITABLE}
+    out.setdefault("provider", "openai_compatible")
+    if not raw:
+        out.update(provider="openai_compatible", kind="chat", max_concurrency="4")
+    return out
+
+
+def _parse_model_form(form: dict[str, Any]) -> dict[str, Any]:
+    """Form strings -> values for models_store.save_model (None removes a key)."""
+
+    def text(k: str) -> str | None:
+        v = str(form.get(k) or "").strip()
+        return v or None
+
+    def num(k: str, cast=float):
+        v = text(k)
+        if v is None:
+            return None
+        try:
+            return cast(v)
+        except ValueError:
+            raise ValueError(f"{k}: {v!r} is not a number") from None
+
+    def lst(k: str) -> list[str] | None:
+        v = text(k)
+        return [x.strip() for x in v.split(",") if x.strip()] if v else None
+
+    ep = text("extra_params")
+    try:
+        extra = yaml.safe_load(ep) if ep else None
+    except yaml.YAMLError as e:
+        raise ValueError(f"extra_params is not valid YAML: {e}") from None
+    if extra is not None and not isinstance(extra, dict):
+        raise ValueError("extra_params must be a mapping, e.g. {temperature: 0.0}")
+    if not text("id") or not text("name") or not text("model"):
+        raise ValueError("id, name and model are required")
+    return {
+        "id": text("id"),
+        "name": text("name"),
+        "provider": text("provider") or "openai_compatible",
+        "base_url": text("base_url"),
+        "model": text("model"),
+        "api_key_env": text("api_key_env"),
+        "kind": None if text("kind") in (None, "chat") else text("kind"),
+        "self_hosted": True if form.get("self_hosted") == "on" else None,
+        "price_in_per_mtok": num("price_in_per_mtok"),
+        "price_out_per_mtok": num("price_out_per_mtok"),
+        "max_concurrency": num("max_concurrency", int),
+        "suites": lst("suites"),
+        "extras": lst("extras"),
+        "extra_params": extra if extra is not None else ({} if ep is not None else None),
+        "knowledge_cutoff": text("knowledge_cutoff"),
+        "notes": text("notes"),
+    }
+
+
+def serve(port: int = 8765, open_browser: bool = True) -> None:  # pragma: no cover - CLI entry
+    import secrets
+    import webbrowser
+
+    import uvicorn
+
+    token = secrets.token_urlsafe(18)
+    url = f"http://127.0.0.1:{port}/?token={token}"
+    print(f"BenchLab control panel: {url}\n(local only; this link is your session key)", flush=True)
+    if open_browser:
+        webbrowser.open(url)
+    uvicorn.run(create_app(token, port=port), host="127.0.0.1", port=port, log_level="warning")

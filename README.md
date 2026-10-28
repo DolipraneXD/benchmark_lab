@@ -492,6 +492,37 @@ import warns when responses contain it. Since there is no usage log, the
 report doesn't flag the missing cost. Import again to replace a result: the
 newest run wins.
 
+## Control panel (`benchlab ui`)
+
+```bash
+uv run benchlab ui            # prints a one-time link and opens http://127.0.0.1:8765
+```
+
+This is a local web panel for one user. It does everything the CLI does day to day:
+- switch between `models.yaml` and `models.xkiro.yaml`
+- add, edit and delete models, and test their connection (`benchlab check`)
+- pick models × benches with a live dry-run plan and cost estimate, then start the run
+  with a budget
+- watch jobs live: progress, requests, tokens, spend against the budget, and the log
+- stop and resume runs
+- browse results and rebuild the report
+- import red-team CSVs
+
+The design is in `docs/superpowers/specs/2026-10-28-benchlab-control-panel-design.md`.
+
+* **Same runs as the CLI.** "Start" launches the exact `benchlab run …` command
+  (shown on the job page) as a background process group. Runs keep going when the
+  tab or the panel closes. Job records and logs are in `<runs_dir>/.jobs/`.
+  - **Stop** sends Ctrl-C to the job, which saves progress.
+  - **Resume** starts the same command again, which continues the run.
+  - The panel refuses to start a (model, bench) pair that is already running.
+* **Model edits** are validated with BenchLab's config models before saving. Comments
+  and layout are kept (ruamel.yaml), and the previous file is saved as `*.yaml.bak`.
+  Keys never appear: the panel only shows whether each `api_key_env` is set in `.env`.
+* **Access.** The panel listens on 127.0.0.1 only. The printed link sets a session
+  cookie, and every request needs it. POSTs must come from the panel itself and the
+  Host header is checked, so other websites open in your browser can't start runs.
+
 ## Cheap mode (`profile: lite`)
 
 The full core suite costs roughly $160 per model at Claude Sonnet 5.5 prices
@@ -556,6 +587,7 @@ benchlab run --model all --bench ttft      # TTFT probe, every model (stage 1)
 benchlab run --model all --bench serving   # serving benchmark, self-hosted models only
 benchlab report [--out report.html] [--no-smoke]   # report.html + results/tracker.json + results/suspicious.json
 benchlab import-redteam <lab.csv> -m <id>      # external red-team CSV (promptfoo) -> redteam bench
+benchlab ui [--port 8765]                     # local web control panel
 ```
 
 `--model all` means every chat model. `--stage N` runs that stage's benches for

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ job.label }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ job.label }}</h1>
+  <p class="lede">Started {{ job.started_at|ts }} from {{ job.config }}{% if job.extra.resumes %}, resuming <a href="/jobs/{{ job.extra.resumes }}">an earlier job</a>{% endif %}. The same run from a terminal:</p>
+  <p><code>{{ cmd }}</code></p>
+</div>
+<div data-poll="/fragments/jobs/{{ job.id }}" data-every="2000"><p class="empty">Loading progress…</p></div>
+{% endblock %}

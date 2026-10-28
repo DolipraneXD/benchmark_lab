@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Config error{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ current_cfg }} doesn't load</h1>
+  <p class="lede">Fix the file, or switch to another config at the top right, then reload this page.</p>
+</div>
+<pre class="log">{{ error }}</pre>
+{% endblock %}
