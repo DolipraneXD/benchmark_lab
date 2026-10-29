@@ -541,17 +541,3 @@ class SWEBenchAdapter(HarborAdapter):
     subset_prefix = "swe"
     tokens_in_per_task = 500_000
     tokens_out_per_task = 15_000
-
-
-class TerminalBench21Adapter(HarborAdapter):
-    """Laguna extra: Terminal-Bench 2.1 (vendor reports 70.2%). Needs a 2.1 dataset in
-    the Harbor registry (``settings.tb21_dataset``); prepare() says so if absent."""
-
-    key = "lag_tb21"
-    display = "Terminal-Bench 2.1 (Laguna)"
-    stage = 4
-    dataset_setting = "tb21_dataset"
-    subset_prefix = "tb"
-
-    def subset_spec(self, subset):  # the vendor number is on the full set; default to all
-        return None if subset is None else super().subset_spec(subset)

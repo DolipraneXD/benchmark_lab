@@ -93,7 +93,7 @@ def test_run_dir_lifecycle_and_resume(tmp_path):
 
 def test_registry_selection(models_yaml):
     cfg = load_config(models_yaml)
-    assert [b.key for b in registry.select_benches(stage=1)] == ["gpqa", "bfcl"]
+    assert [b.key for b in registry.select_benches(stage=1)] == ["gpqa", "bfcl", "apptasks"]
     assert [b.key for b in registry.select_benches(bench="bfcl,gpqa")] == ["gpqa", "bfcl"]
     core = {b.key for b in registry.select_benches(suite="core")}
     assert {"gpqa", "bfcl", "t2air", "tb", "swe", "gaia", "ttft"} <= core
@@ -102,16 +102,15 @@ def test_registry_selection(models_yaml):
         registry.select_benches()
     with pytest.raises(KeyError):
         registry.select_benches(bench="nope")
-    # extras apply only to the listed model, or to a model that opts in via `extras:`
-    aider_glm = registry.get("glm_aider")
-    assert registry.applies_to(aider_glm, cfg.get("mock"))  # mock opted in
-    assert not registry.applies_to(aider_glm, cfg.get("claude"))
+    # extras apply only to a model that opts in via `extras:`
+    autobench = registry.get("autobench")
+    assert registry.applies_to(autobench, cfg.get("mock"))  # mock opted in
+    assert not registry.applies_to(autobench, cfg.get("claude"))
     assert registry.applies_to(registry.get("gpqa"), cfg.get("claude"))
     assert not registry.applies_to(registry.get("gpqa"), cfg.get("qemb"))
     # not-yet-built adapters resolve to None instead of crashing
     assert registry.load_adapter(registry.get("gpqa")).__name__ == "GPQAAdapter"
-    assert registry.load_adapter(registry.get("mimo_tool")) is not None  # stage 9
-    assert registry.load_adapter(registry.get("mimo_osw")) is not None  # stage 9
+    assert registry.load_adapter(registry.get("redteam")) is None  # imported, never run
 
 
 def test_proxy_config_has_no_secrets(models_yaml, tmp_path):

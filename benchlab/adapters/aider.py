@@ -417,13 +417,3 @@ class AiderAdapter(BenchAdapter):
         if cfg.get("smoke"):
             base += "; SMOKE"
         return base
-
-
-class AiderGLM(AiderAdapter):
-    key = "glm_aider"
-    display = "Aider Polyglot (GLM)"
-
-
-class AiderML4(AiderAdapter):
-    key = "ml4_aider"
-    display = "Aider Polyglot (Mistral Large 4)"

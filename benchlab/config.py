@@ -11,9 +11,9 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from benchlab import providers
 from benchlab.redact import register_secret_env
 
-Provider = Literal["openai_compatible", "anthropic", "bedrock"]
 Kind = Literal["chat", "embedding", "reranker"]
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -26,7 +26,7 @@ class MissingKeyError(RuntimeError):
 class ModelSpec(BaseModel):
     id: str
     name: str
-    provider: Provider
+    provider: str  # a key of benchlab.providers.PROVIDERS
     model: str
     base_url: str | None = None
     api_key_env: str | None = None
@@ -36,7 +36,8 @@ class ModelSpec(BaseModel):
     price_out_per_mtok: float = 0.0
     max_concurrency: int = Field(default=4, ge=1)
     extra_params: dict[str, Any] = Field(default_factory=dict)
-    region: str | None = None
+    region: str | None = None  # bedrock
+    api_version: str | None = None  # azure
     extra_headers: dict[str, str] = Field(default_factory=dict)
     suites: list[str] | None = None
     extras: list[str] = Field(default_factory=list)
@@ -59,13 +60,16 @@ class ModelSpec(BaseModel):
 
     @model_validator(mode="after")
     def _provider_requirements(self) -> ModelSpec:
-        if self.provider == "openai_compatible" and not self.base_url:
-            raise ValueError(f"model {self.id}: openai_compatible needs base_url")
+        prov = providers.get(self.provider)  # unknown provider -> ValueError
+        if prov.base_url == "required" and not self.base_url:
+            raise ValueError(f"model {self.id}: {self.provider} needs base_url")
         if self.reference:
             self.suites = []
             return self
-        if self.provider in ("openai_compatible", "anthropic") and not self.api_key_env:
-            raise ValueError(f"model {self.id}: {self.provider} needs api_key_env")
+        if prov.key_required and not self.api_key_env:
+            raise ValueError(f"model {self.id}: {self.provider} needs an API key (api_key_env)")
+        if prov.needs_api_version and not self.api_version:
+            raise ValueError(f"model {self.id}: {self.provider} needs api_version")
         for k in ("api_key", "key", "token"):
             if k in self.model_fields_set:  # pragma: no cover - defensive
                 raise ValueError("never put keys in models.yaml; use api_key_env")
@@ -90,7 +94,7 @@ class ModelSpec(BaseModel):
         if not self.api_key_env:
             return None
         v = os.environ.get(self.api_key_env)
-        if not v and required and self.provider != "bedrock":
+        if not v and required:  # the model names a key variable, so it needs it
             raise MissingKeyError(
                 f"model {self.id}: env var {self.api_key_env} is not set (put it in .env)"
             )
@@ -132,7 +136,6 @@ class Settings(BaseModel):
     harbor_subset_size: int = 50  # fixed seeded subset for Terminal-Bench / SWE-bench
     tb_dataset: str = "terminal-bench@2.0"  # harbor registry name@version
     swe_dataset: str = "swebench-verified@1.0"
-    tb21_dataset: str = "terminal-bench@2.1"  # Laguna extra; must exist in the registry
     aider_ref: str = "v0.86.2"  # Aider-AI/aider tag (benchmark harness + Docker image)
     aider_polyglot_ref: str = (
         "7e0611e77b54e2dea774cdc0aa00cf9f7ed6144f"  # Aider-AI/polyglot-benchmark
@@ -195,26 +198,17 @@ class Settings(BaseModel):
     )
     ttft_prompts: int = 10  # fixed prompt set size for the TTFT probe (all models)
     ttft_repeats: int = 3  # streamed repeats per prompt
-    # stage 9 (optional): AutomationBench, Toolathlon, OSWorld
+    apptasks_dir: str = "evals"  # app tasks: your own cases, evals/*.yaml
+    # AutomationBench (opt-in extra: add `autobench` to a model's extras)
     autobench_ref: str = (
         "4a8e1061254004d9dac807054eed33fad7d1ff14"  # zapier/AutomationBench (v1.0.6)
     )
     autobench_toolset: str = "api"  # api | zapier | limited_zapier (README default: api)
     autobench_max_steps: int = 50
     autobench_domains: list[str] | None = None  # default: the 6 public scored domains
-    toolathlon_ref: str = (
-        "9be8d8fe07a497b18ee61e3f2ae694e9797f39eb"  # hkust-nlp/Toolathlon (Toolathlon-Verified)
-    )
-    osworld_ref: str = "b138d348256078fa634fc3b73567a7337c793e6b"  # xlang-ai/OSWorld
-    osworld_provider: str = "docker"  # docker (needs KVM) | aws | vmware | virtualbox ...
-    osworld_max_steps: int = 15
-    osworld_meta: str = (
-        "test_all.json"  # 369 tasks; test_nogdrive.json (361) when Google Drive is not configured
-    )
-    osworld_client_password: str = "password"  # VM user password for the docker/vmware images
     # report / tracker (stage 8)
     sanity_threshold_pts: float = (
-        3.0  # |ours - published| above this is flagged (gpt_sanity, suspicious list)
+        3.0  # |ours - published| above this is flagged in the suspicious list
     )
     self_hosted_gap_pts: float = (
         5.0  # self-hosted below its API counterpart by more than this -> hint

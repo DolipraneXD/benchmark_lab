@@ -1,0 +1,88 @@
+{# Models x benchmarks, shared by the Results page (live=true: cells link to runs) and the
+   exported report.html (live=false: failed tests are written inline). #}
+{% import "_ui.html" as ui %}
+{% set base = cmp.baseline %}
+{% if not cmp.models %}
+<p class="empty">No finished runs yet.{% if live %} <a href="/run">Start a run</a> to get the first result.{% endif %}</p>
+{% else %}
+
+<h2>Models <span class="aside">Averages over the benchmarks each model ran; the difference to {{ base.id }} uses only benchmarks both ran</span></h2>
+<div class="wrap"><table class="summary">
+  <tr><th>Model</th><th class="num">Benchmarks</th><th>Mean score</th><th>vs {{ base.id }}</th><th>Tests passed</th><th class="num">Cost</th><th class="num">Time</th><th class="num">Errors</th></tr>
+  {% for m in cmp.models %}{% set s = cmp.summary[m.id] %}{% set t = s.counts.pass + s.counts.fail + s.counts.error %}
+  <tr>
+    <td><span class="name">{{ m.name }}</span><span class="sub">{{ m.id }}{{ ', baseline' if m.id == base.id }}{{ ', includes smoke runs' if s.smoke }}</span></td>
+    <td class="num">{{ s.benches }}</td>
+    <td>{% if s.mean is not none %}<span class="big">{{ s.mean|num }}</span>{% else %}<span class="quiet">-</span>{% endif %}</td>
+    <td>{% if m.id == base.id %}<span class="quiet">baseline</span>{% elif s.delta is not none %}<span class="delta-pill {{ 'up' if s.delta > 0.05 else ('down' if s.delta < -0.05 else '') }}">{{ '%+.1f'|format(s.delta) }} pts</span><span class="sub">over {{ s.delta_n }} benchmark{{ 's' if s.delta_n != 1 }}</span>{% else %}<span class="quiet">no shared benchmark</span>{% endif %}</td>
+    <td style="min-width:170px">{% if t %}<div class="outcome small" aria-label="{{ s.counts.pass }} passed, {{ s.counts.fail }} failed, {{ s.counts.error }} errors"><i class="pass" style="flex:{{ s.counts.pass }}"></i><i class="fail" style="flex:{{ s.counts.fail }}"></i><i class="error" style="flex:{{ s.counts.error }}"></i></div>
+      <span class="sub">{{ s.counts.pass }} of {{ t }} passed{{ ', %d errors'|format(s.counts.error) if s.counts.error }}</span>{% else %}<span class="quiet">-</span>{% endif %}</td>
+    <td class="num">{{ s.cost|usd }}</td>
+    <td class="num">{{ s.wall|dur }}</td>
+    <td class="num">{% if s.errors %}<span class="lamp fault">{{ s.errors }}</span>{% else %}0{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+
+<h2>Scores <span class="aside">Each cell: the score, its difference to {{ base.id }}, and the tests passed{{ '; click to open the run' if live }}</span></h2>
+<div class="wrap"><table class="matrix">
+  <tr><th>Benchmark</th>{% for m in cmp.models %}<th>{{ m.id }}{% if m.id == base.id %}<span class="sub">baseline</span>{% endif %}</th>{% endfor %}
+    {% for r in cmp.references %}<th class="ref">{{ r.id }}<span class="sub">published</span></th>{% endfor %}</tr>
+  {% for b in cmp.benches %}
+  <tr>
+    <td>{{ ui.bench(b.key, b.display) }}<span class="sub">{{ b.key }}</span></td>
+    {% for m in cmp.models %}{% set c = cmp.cells[m.id].get(b.key) %}
+    <td class="cell{{ ' smoke' if c and c.smoke }}">
+      {% if c %}
+        {% if live %}<a class="cell-link" href="/runs/{{ c.run }}" aria-label="{{ m.id }} on {{ b.key }}: open the run">{% endif %}
+        {{ ui.readout(c.value, c.metric, c.base, c.is_base, c.pct, base.id, lower=c.lower) }}
+        {% set k = c.counts %}{% set t = k.pass + k.fail + k.error %}
+        <span class="sub">{% if t %}{{ k.pass }}/{{ t }} passed{% else %}{{ c.n }} task{{ 's' if c.n != 1 }}{% endif %}{% if c.cost is not none %} · {{ c.cost|usd }}{% endif %}{% if c.errors %} · <span style="color:var(--fault)">{{ c.errors }} errors</span>{% endif %}{% if c.smoke %} · smoke{% endif %}</span>
+        {% if live %}</a>{% endif %}
+      {% else %}<span class="quiet">-</span>{% endif %}
+    </td>
+    {% endfor %}
+    {% for r in cmp.references %}<td class="ref">{{ r.published.get(b.key)|num if r.published.get(b.key) is not none else '-' }}</td>{% endfor %}
+  </tr>
+  {% endfor %}
+</table></div>
+<p class="quiet small">Dashed cells are smoke runs (2–3 tasks): check the setup with them, don't compare models on them.{% if cmp.references %} Published scores come from the vendor's own harness settings, so they are context, not a like-for-like comparison.{% endif %}</p>
+
+{% if susp %}
+<h2>Worth a second look <span class="aside">{{ susp|length }} item{{ 's' if susp|length != 1 }}</span></h2>
+<ul class="flags">
+  {% for f in susp %}
+  <li><span class="name">{{ f.model }}</span> on {{ ui.bench(f.bench) }}: {{ f.why }}{% if f.hint %}<span class="sub">{{ f.hint }}</span>{% endif %}
+    {% if live and f.run %}<a class="sub" href="/runs/{{ f.run }}">Open the run</a>{% endif %}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% if not live %}
+<h2>Failed tests</h2>
+<p class="quiet small">The first failed or errored tests of each model on each benchmark, with what the model saw and answered. The panel's run pages list every test.</p>
+{% for b in cmp.benches %}{% for m in cmp.models %}{% set c = cmp.cells[m.id].get(b.key) %}
+{% if c and c.failures %}
+<details class="failset">
+  <summary><span class="name">{{ m.id }}</span> on {{ b.display }} <span class="quiet">— {{ c.counts.fail }} failed, {{ c.counts.error }} errors{{ ' (showing %d)'|format(c.failures|length) if c.failures|length < c.counts.fail + c.counts.error }}</span></summary>
+  {% with listing = {'rows': c.failures, 'total': c.failures|length, 'page': 1, 'pages': 1} %}{% include "_tests.html" %}{% endwith %}
+</details>
+{% endif %}
+{% endfor %}{% endfor %}
+{% endif %}
+
+<h2>Runs used</h2>
+<div class="wrap"><table>
+  <tr><th>Model and benchmark</th><th>Date</th><th class="num">Tasks</th><th class="num">Time</th><th class="num">Tokens per task</th><th>How it was measured</th></tr>
+  {% for b in cmp.benches %}{% for m in cmp.models %}{% set c = cmp.cells[m.id].get(b.key) %}{% if c %}
+  <tr>
+    <td><span class="name">{{ m.id }}</span> on {{ b.key }}<span class="sub">{% if live %}<a href="/runs/{{ c.run }}">{{ c.run }}</a>{% else %}{{ c.run }}{% endif %}</span></td>
+    <td>{{ c.date }}</td>
+    <td class="num">{{ c.n }}{{ ' × %d'|format(c.trials) if c.trials > 1 }}</td>
+    <td class="num">{{ c.wall|dur }}</td>
+    <td class="num">{{ '{:,.0f}'.format(c.tokens_per_task) if c.tokens_per_task else '-' }}</td>
+    <td class="small">{{ c.note }}{% for w in c.warnings %}<span class="sub tag warn">{{ w }}</span>{% endfor %}</td>
+  </tr>
+  {% endif %}{% endfor %}{% endfor %}
+</table></div>
+{% endif %}

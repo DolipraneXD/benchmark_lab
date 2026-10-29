@@ -1,0 +1,46 @@
+{# One page of a run's tests. Each row opens to show what the model saw and said. #}
+{% set L = listing %}
+<p class="quiet small" style="margin:0 0 8px">{{ L.total }} test{{ 's' if L.total != 1 }} match{{ 'es' if L.total == 1 }}{% if L.pages > 1 %}, page {{ L.page }} of {{ L.pages }}{% endif %}.</p>
+{% if not L.rows %}<p class="empty">No tests match.</p>{% endif %}
+<ol class="tests">
+{% for s in L.rows %}
+  <li class="test {{ s.status }}">
+    <details>
+      <summary>
+        <span class="lamp {{ {'pass': 'pass', 'fail': 'fault', 'error': 'hold'}[s.status] }}">{{ {'pass': 'Passed', 'fail': 'Failed', 'error': 'Error'}[s.status] }}</span>
+        <span class="tid">{{ s.id }}</span>
+        {% if s.category %}<span class="tag">{{ s.category }}</span>{% endif %}
+        <span class="preview">{{ (s.prompt or s.reason)|truncate(140, true, '…') }}</span>
+        {% if s.score is not none and s.score not in (0, 1) %}<span class="num quiet">{{ s.score|num(2) }}</span>{% endif %}
+      </summary>
+      <div class="test-body">
+        {% if s.system %}<details class="block"><summary>System prompt <span class="quiet">({{ s.system|length }} characters)</span></summary><pre>{{ s.system }}</pre></details>{% endif %}
+        {% if s.prompt %}<div class="block"><h4>Prompt</h4><pre>{{ s.prompt }}</pre></div>{% endif %}
+        {% if s.response %}<div class="block"><h4>Model answer</h4><pre>{{ s.response }}</pre></div>{% endif %}
+        {% if s.expected %}<div class="block"><h4>Expected</h4><pre>{{ s.expected }}</pre></div>{% endif %}
+        {% if s.reason %}<div class="block {{ 'why-fail' if s.status != 'pass' }}"><h4>{{ 'Why it failed' if s.status == 'fail' else ('What went wrong' if s.status == 'error' else 'Grader') }}</h4><pre>{{ s.reason }}</pre></div>{% endif %}
+        {% if s.messages %}
+        <details class="block"><summary>Conversation <span class="quiet">({{ s.messages|length }} messages)</span></summary>
+          <ol class="convo">
+          {% for m in s.messages %}
+            <li class="msg {{ m.role }}"><span class="role">{{ m.role }}</span>
+              {% if m.content %}<pre>{{ m.content }}</pre>{% endif %}
+              {% for c in m.tool_calls or [] %}<pre class="call">→ {{ c }}</pre>{% endfor %}
+            </li>
+          {% endfor %}
+          </ol>
+        </details>
+        {% endif %}
+        {% if not (s.system or s.prompt or s.response or s.reason or s.messages) %}<p class="quiet small">This benchmark only records whether the test passed.</p>{% endif %}
+      </div>
+    </details>
+  </li>
+{% endfor %}
+</ol>
+{% if L.pages > 1 %}
+<div class="row pager">
+  <button type="button" data-page="{{ L.page - 1 }}" {{ 'disabled' if L.page <= 1 }}>Previous</button>
+  <span class="quiet">Page {{ L.page }} of {{ L.pages }}</span>
+  <button type="button" data-page="{{ L.page + 1 }}" {{ 'disabled' if L.page >= L.pages }}>Next</button>
+</div>
+{% endif %}

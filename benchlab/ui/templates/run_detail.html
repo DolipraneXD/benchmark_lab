@@ -30,6 +30,44 @@
   </dl>
 </div>
 
+{% if tests %}{% set c = tests.counts %}{% set n = c.pass + c.fail + c.error %}
+<h2>Tests <span class="aside">{{ 'Prompts, answers and grader notes from the harness' if tests.source == 'harness' else 'This benchmark only keeps pass or fail per test' }}</span></h2>
+{% if n %}
+<div class="outcome" role="img" aria-label="{{ c.pass }} passed, {{ c.fail }} failed, {{ c.error }} errors">
+  <i class="pass" style="flex:{{ c.pass }}"></i><i class="fail" style="flex:{{ c.fail }}"></i><i class="error" style="flex:{{ c.error }}"></i>
+</div>
+<dl class="figures">
+  <div><dt>Passed</dt><dd style="color:var(--pass)">{{ c.pass }}</dd></div>
+  <div><dt>Failed</dt><dd style="color:var(--fault)">{{ c.fail }}</dd></div>
+  <div><dt>Errors</dt><dd>{{ c.error }}</dd></div>
+  <div><dt>Pass rate</dt><dd>{{ (100 * c.pass / n)|num }}%</dd></div>
+</dl>
+{% if tests.categories|length > 1 %}
+<h3>By category</h3>
+<div class="wrap"><table class="cats">
+  <tr><th>Category</th><th class="num">Passed</th><th class="num">Failed</th><th class="num">Errors</th><th>Pass rate</th></tr>
+  {% for cat, v in tests.categories.items()|sort(attribute='1.fail', reverse=true) %}{% set t = v.pass + v.fail + v.error %}
+  <tr><td>{{ cat }}</td><td class="num">{{ v.pass }}</td><td class="num">{{ v.fail }}</td><td class="num">{{ v.error }}</td>
+    <td style="min-width:160px"><div class="meter"><i style="width:{{ (100 * v.pass / t)|round }}%"></i></div><span class="sub">{{ (100 * v.pass / t)|num }}%</span></td></tr>
+  {% endfor %}
+</table></div>
+{% endif %}
+<form id="tests-filter" class="row filters" method="post" action="/runs/{{ name }}/tests" data-target="#tests" data-live>
+  <div class="seg" role="radiogroup" aria-label="Show">
+    {% for v, label in [('all', 'All'), ('fail', 'Failed'), ('pass', 'Passed'), ('error', 'Errors')] %}
+    <label><input type="radio" name="status" value="{{ v }}" {{ 'checked' if listing.status == v }}><span>{{ label }}</span></label>
+    {% endfor %}
+  </div>
+  {% if tests.categories %}<select name="category" aria-label="Category"><option value="">All categories</option>{% for cat in tests.categories %}<option>{{ cat }}</option>{% endfor %}</select>{% endif %}
+  <input type="search" name="q" placeholder="Search prompts and answers" aria-label="Search tests">
+  <input type="hidden" name="page" value="1">
+</form>
+<div id="tests">{% with listing = listing %}{% include "_tests.html" %}{% endwith %}</div>
+{% else %}
+<p class="empty">No per-test records were found for this run.</p>
+{% endif %}
+{% endif %}
+
 {% if res and res.warnings %}
 <h2>Warnings</h2>
 {% for w in res.warnings %}<div class="notice warn">{{ w }}</div>{% endfor %}

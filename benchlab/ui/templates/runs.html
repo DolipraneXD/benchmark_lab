@@ -1,14 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Results{% endblock %}
+{% block title %}Runs{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Results</h1>
+  <h1>Runs</h1>
   <p class="lede">Every run in <code>{{ cfg.settings.runs_dir }}/</code>, newest first. The blue tick on each scale is {{ baseline_id }}'s score on the same benchmark.</p>
 </div>
-<div class="row">
-  <form class="inline" method="post" action="/report"><button class="primary">Rebuild the report</button></form>
-  {% if report_at %}<a class="btn" href="/report" target="_blank" rel="noopener">Open the report</a><span class="quiet small">Built {{ report_at|ts }}</span>{% else %}<span class="quiet small">No report built yet</span>{% endif %}
-</div>
+<div class="row"><a class="btn primary" href="/results">Compare models</a></div>
 <h2>{{ rows|length }} runs
   <form class="aside row" method="get" action="/runs">
     <label for="flt-model" class="quiet" style="margin:0;font-weight:400">Model</label>

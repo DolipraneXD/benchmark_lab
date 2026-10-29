@@ -21,7 +21,7 @@ import httpx
 import yaml
 
 from benchlab.config import BenchConfig, ModelSpec
-from benchlab.llm import litellm_model_name
+from benchlab.llm import endpoint_params
 
 CALLBACK = "benchlab.proxy_logger.benchlab_logger"
 
@@ -29,22 +29,7 @@ CALLBACK = "benchlab.proxy_logger.benchlab_logger"
 def _proxy_litellm_params(spec: ModelSpec) -> dict[str, Any]:
     """Like ``llm.litellm_params`` but with ``os.environ/VAR`` references so the
     generated YAML never contains a key value."""
-    p: dict[str, Any] = {"model": litellm_model_name(spec)}
-    if spec.provider == "openai_compatible":
-        p["api_base"] = spec.base_url
-        p["api_key"] = f"os.environ/{spec.api_key_env}"
-    elif spec.provider == "anthropic":
-        p["api_key"] = f"os.environ/{spec.api_key_env}"
-        if spec.base_url:
-            p["api_base"] = spec.base_url
-    elif spec.provider == "bedrock":
-        if spec.region:
-            p["aws_region_name"] = spec.region
-    if spec.extra_headers:
-        p["extra_headers"] = dict(spec.extra_headers)
-    if spec.has_prices:
-        p["input_cost_per_token"] = spec.price_in_per_mtok / 1e6
-        p["output_cost_per_token"] = spec.price_out_per_mtok / 1e6
+    p = endpoint_params(spec, f"os.environ/{spec.api_key_env}" if spec.api_key_env else None)
     # extra_params that are *fixed* for the model (e.g. a vendor-specific flag)
     # are applied here too, so harnesses hitting the proxy get the same setup.
     for k, v in spec.extra_params.items():

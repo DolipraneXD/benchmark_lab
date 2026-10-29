@@ -18,12 +18,13 @@
 {%- endmacro %}
 
 {# value on a 0-100 scale; the blue tick is the baseline model's score on the same bench #}
-{% macro readout(value, metric, base=none, is_base=false, pct=true, base_id='', large=false) -%}
+{% macro readout(value, metric, base=none, is_base=false, pct=true, base_id='', large=false, lower=false) -%}
 <div class="readout{{ ' large' if large }}" title="{{ metric }}">
   <span><span class="value">{{ value|num }}</span>{% if not pct %} <span class="unit">{{ metric }}</span>{% endif %}</span>
   {%- if is_base %}<span class="delta">baseline</span>
   {%- elif base is not none and value is not none %}{% set d = value - base %}
-  <span class="delta {{ 'up' if d > 0.05 else ('down' if d < -0.05 else '') }}">{{ '%+.1f'|format(d) }} vs {{ base_id }}</span>
+  {%- set better = -d if lower else d %}
+  <span class="delta {{ 'up' if better > 0.05 else ('down' if better < -0.05 else '') }}">{{ '%+.1f'|format(d) }} vs {{ base_id }}</span>
   {%- endif %}
   {%- if pct and value is not none %}
   <span class="scale" aria-hidden="true">

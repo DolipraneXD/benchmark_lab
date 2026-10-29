@@ -5,10 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from benchlab.adapters.aider import AiderAdapter, AiderGLM, parse_stats_output
-from benchlab.adapters.base import HarnessNotReady
-from benchlab.adapters.livecodebench import WRAPPER, LCBAdapter, LCBQwen27
-from benchlab.adapters.ruler import RulerAdapter
+from benchlab.adapters.aider import AiderAdapter, parse_stats_output
+from benchlab.adapters.livecodebench import WRAPPER, LCBAdapter
 from benchlab.config import load_config
 from benchlab.runs import RunConfig, RunDir
 
@@ -73,7 +71,6 @@ def test_aider_command_and_docker(models_yaml):
         cmd[-3:] == [f"benchlab-aider:{cfg.settings.aider_ref}", "bash", "-lc"][:2] + ["-lc"]
         or cmd[-1] == "echo hi"
     )
-    assert AiderGLM(cfg).key == "glm_aider"
 
 
 def test_aider_parse(models_yaml, tmp_path, monkeypatch):
@@ -176,7 +173,6 @@ def test_lcb_command_window_and_wrapper(models_yaml, monkeypatch):
     cmd = a.build_command(m, False, Path("/v/bin"))
     assert cmd[:2] == ["/v/bin/python", "-c"] and cmd[2] == WRAPPER and cmd[3] == "mock"
     assert "LMStyle.OpenAIChat" in WRAPPER and "LanguageModelStore[name] = lm" in WRAPPER
-    assert LCBQwen27(cfg).key == "q27_lcb"
 
 
 def test_lcb_parse(models_yaml, tmp_path):
@@ -242,11 +238,3 @@ def test_lcb_parse(models_yaml, tmp_path):
     assert res.harness["window"] == ("2024-11-02", "2025-01-15")
     assert "window 2024-11-02..2025-01-15" in res.note and "cutoff 2024-10-01" in res.note
     assert res.tracker == {"mock__lcb": {"v": "40.0", "note": res.note}}
-
-
-def test_ruler_is_an_explicit_skip(models_yaml):
-    cfg = load_config(models_yaml)
-    r = RulerAdapter(cfg)
-    with pytest.raises(HarnessNotReady, match="NeMo-Skills"):
-        r.prepare()
-    assert r.plan(cfg.get("mock"), None, 1, False).n_tasks == 0

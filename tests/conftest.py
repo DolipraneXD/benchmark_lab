@@ -222,7 +222,7 @@ models:
     max_concurrency: 4
     extra_params: {{temperature: 0.0}}
     suites: [core, coder]
-    extras: [glm_aider, mimo_tool, ds_auto]
+    extras: [autobench]
   - id: badtools
     name: Mock malformed tools
     provider: openai_compatible

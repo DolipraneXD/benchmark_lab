@@ -26,19 +26,17 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from benchlab import __version__, registry
-from benchlab.bench_about import about
+from benchlab import __version__, registry, samples
 from benchlab.config import BenchConfig, load_config
 from benchlab.redact import redact
 from benchlab.runs import RunDir
-from benchlab.ui import env_store, models_store
+from benchlab.ui import env_store, models_store, render
 from benchlab.ui import jobs as J
 from benchlab.usage import UsageLog
 
 HERE = Path(__file__).parent
 COOKIE = "benchlab_ui"
 CFG_COOKIE = "benchlab_cfg"
-PROVIDERS = ("openai_compatible", "anthropic", "bedrock")
 KINDS = ("chat", "embedding", "reranker")
 CsvFile = File(...)
 NON_PCT_BENCHES = {"ttft", "serving"}  # seconds / tokens per second: no 0-100 scale
@@ -53,14 +51,7 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
     app = FastAPI(title="BenchLab", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     tpl = Jinja2Templates(directory=HERE / "templates")
-    tpl.env.filters["redact"] = lambda s: redact(str(s))
-    tpl.env.filters["usd"] = lambda v: (
-        "-" if v is None else (f"${v:.4f}" if v < 0.01 else f"${v:.2f}")
-    )
-    tpl.env.filters["num"] = lambda v, nd=1: "-" if v is None else f"{float(v):.{nd}f}"
-    tpl.env.filters["ts"] = lambda t: datetime.fromtimestamp(t).strftime("%Y-%m-%d %H:%M")
-    tpl.env.filters["dur"] = _dur
-    tpl.env.globals["about"] = about  # benchmark hover cards
+    render.install(tpl.env)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     last_checks: dict[tuple[str, str], dict[str, Any]] = {}
     env_path = root / ".env"
@@ -455,14 +446,18 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
             return HTMLResponse(f"<p class=err>{redact(str(ex))}</p>")
         busy = J.running_pairs(runs_dir(cfg))
         blocked = _blocked(cfg, rows)
-        total = sum(r[5] for r in rows if r[5] is not None and (r[0].id, r[1].key) not in blocked)
+        go = [r for r in rows if (r.model.id, r.bench.key) not in blocked and r.adapter_cls]
+        total = sum(r.est_usd for r in go if r.est_usd is not None)
+        total_s = sum(r.est_s or 0 for r in go)
         return tpl.TemplateResponse(
             request,
             "_plan.html",
             {
                 "rows": rows,
                 "total": total,
-                "unknown": any(r[5] is None for r in rows),
+                "total_s": total_s,
+                "measured": any(r.time_source == "last run" for r in go),
+                "unknown": any(r.est_usd is None for r in rows),
                 "busy": busy,
                 "blocked": blocked,
                 "sel": sel,
@@ -651,6 +646,7 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
             (x for x in _run_rows(runs_dir(cfg), cfg.settings.baseline_model) if x["name"] == name),
             {},
         )
+        tests = samples.load(r) if res else None
         return page(
             request,
             "run_detail.html",
@@ -662,6 +658,47 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
             usage=r.usage_log.summarize().as_dict(),
             raw=sorted(x.name for x in r.raw_dir.iterdir()) if r.raw_dir.exists() else [],
             me=me,
+            tests=tests,
+            listing=_tests_page(
+                tests, "fail" if tests and tests["counts"]["fail"] else "all", "", "", 1
+            )
+            if tests
+            else None,
+        )
+
+    @app.post("/runs/{name}/tests", response_class=HTMLResponse)
+    async def run_tests(request: Request, name: str):
+        """One page of a run's tests, filtered by status, category and text."""
+        cfg, e = load(request)
+        p = runs_dir(cfg) / name if cfg else None
+        if not cfg or Path(name).name != name or not p or not (p / RunDir.RESULT).exists():
+            return HTMLResponse("<p class=err>no such finished run</p>")
+        f = await request.form()
+        listing = _tests_page(
+            samples.load(RunDir(p)),
+            str(f.get("status") or "all"),
+            str(f.get("category") or ""),
+            str(f.get("q") or ""),
+            int(str(f.get("page") or "1") or 1),
+        )
+        return tpl.TemplateResponse(request, "_tests.html", {"listing": listing})
+
+    @app.get("/results", response_class=HTMLResponse)
+    def results_page(request: Request):
+        from benchlab.report import collect, comparison, suspicious
+
+        cfg, e = load(request)
+        if not cfg:
+            return broken(request, e)
+        col = collect(cfg)
+        rep = root / cfg.settings.results_dir / "report.html"
+        return page(
+            request,
+            "results.html",
+            cfg=cfg,
+            cmp=comparison(cfg, col),
+            susp=suspicious(cfg, col),
+            report_at=rep.stat().st_mtime if rep.exists() else None,
         )
 
     @app.post("/report")
@@ -670,16 +707,16 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
 
         cfg, e = load(request)
         if not cfg:
-            return back("/runs", err=e)
+            return back("/results", err=e)
         out = root / cfg.settings.results_dir / "report.html"
         try:
             rep = build_report(cfg, out)
         except Exception as ex:  # noqa: BLE001
-            return back("/runs", err=f"report failed: {redact(str(ex))}")
+            return back("/results", err=f"Export failed: {redact(str(ex))}")
         return back(
-            "/runs",
-            msg=f"report rebuilt: {len(rep.collected.entries)} results, "
-            f"{len(rep.suspicious)} suspicious",
+            "/results",
+            msg=f"Exported {out.name}: {len(rep.collected.entries)} results, "
+            f"{len(rep.suspicious)} to look at. Open it with the button below.",
         )
 
     @app.get("/report")
@@ -689,7 +726,7 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
             return broken(request, e)
         p = root / cfg.settings.results_dir / "report.html"
         if not p.exists():
-            return back("/runs", err="no report yet: rebuild it first")
+            return back("/results", err="No report exported yet.")
         return FileResponse(p, media_type="text/html")
 
     # ---- import ------------------------------------------------------------------------
@@ -737,13 +774,36 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
 
 
 # --------------------------------------------------------------------------- #
-def _dur(s: float | None) -> str:
-    if s is None:
-        return "-"
-    s = int(s)
-    h, rem = divmod(s, 3600)
-    m, sec = divmod(rem, 60)
-    return f"{h}h{m:02d}m" if h else (f"{m}m{sec:02d}s" if m else f"{sec}s")
+TESTS_PER_PAGE = 40
+
+
+def _tests_page(
+    data: dict[str, Any], status: str, category: str, q: str, page: int
+) -> dict[str, Any]:
+    """Filter a run's samples and cut one page; text search covers id, prompts and answers."""
+    q = q.strip().lower()
+    rows = [
+        s
+        for s in data["samples"]
+        if (status == "all" or s["status"] == status)
+        and (not category or s["category"] == category)
+        and (
+            not q
+            or q
+            in " ".join((s["id"], s["prompt"], s["response"], s["reason"], s["system"])).lower()
+        )
+    ]
+    pages = max(1, -(-len(rows) // TESTS_PER_PAGE))
+    page = min(max(1, page), pages)
+    return {
+        "rows": rows[(page - 1) * TESTS_PER_PAGE : page * TESTS_PER_PAGE],
+        "total": len(rows),
+        "page": page,
+        "pages": pages,
+        "status": status,
+        "category": category,
+        "q": q,
+    }
 
 
 def _cmd_text(argv: list[str], root: Path) -> str:
@@ -893,6 +953,8 @@ def _parse_model_form(form: dict[str, Any]) -> dict[str, Any]:
         "name": text("name"),
         "provider": text("provider") or "openai_compatible",
         "base_url": text("base_url"),
+        "api_version": text("api_version"),
+        "region": text("region"),
         "model": text("model"),
         "kind": None if text("kind") in (None, "chat") else text("kind"),
         "self_hosted": True if form.get("self_hosted") == "on" else None,

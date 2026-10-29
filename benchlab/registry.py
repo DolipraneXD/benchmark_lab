@@ -190,222 +190,35 @@ _reg(
     )
 )
 
+_reg(
+    BenchInfo(
+        "apptasks",
+        "App tasks (your own cases)",
+        1,
+        ("core", "coder"),
+        "apptasks",
+        "benchlab (evals/*.yaml)",
+        adapter="benchlab.adapters.apptasks:AppTasksAdapter",
+        tokens_in_per_task=1500,
+        tokens_out_per_task=400,
+        notes="your prompts, documents and tools with checks; edit evals/*.yaml",
+    )
+)
+
 # ---- extras ---------------------------------------------------------------------
 _reg(
     BenchInfo(
-        "lag_tb21",
-        "Terminal-Bench 2.1 (Laguna)",
+        "autobench",
+        "AutomationBench",
         4,
         ("extras",),
-        "lag_tb21",
-        "harbor/terminal-bench@2.1",
-        adapter="benchlab.adapters.harbor:TerminalBench21Adapter",
-        only_models=("laguna",),
-        needs_docker=True,
-        tokens_in_per_task=400000,
-        tokens_out_per_task=15000,
-    )
-)
-_reg(
-    BenchInfo(
-        "lag_ruler",
-        "RULER (Laguna)",
-        4,
-        ("extras",),
-        "lag_ruler",
-        "NVIDIA/RULER",
-        adapter="benchlab.adapters.ruler:RulerAdapter",
-        only_models=("laguna",),
-        tokens_in_per_task=64000,
-        tokens_out_per_task=100,
-    )
-)
-_reg(
-    BenchInfo(
-        "mimo_long",
-        "RULER (MiMo)",
-        4,
-        ("extras",),
-        "mimo_long",
-        "NVIDIA/RULER",
-        adapter="benchlab.adapters.ruler:RulerAdapter",
-        only_models=("mimo",),
-        tokens_in_per_task=64000,
-        tokens_out_per_task=100,
-    )
-)
-_reg(
-    BenchInfo(
-        "mimo_tool",
-        "Toolathlon (MiMo)",
-        4,
-        ("extras",),
-        "mimo_tool",
-        "Toolathlon",
-        adapter="benchlab.adapters.toolathlon:ToolathlonAdapter",
-        n_tasks_default=108,
-        tokens_in_per_task=400000,
-        tokens_out_per_task=20000,
-        needs_docker=True,
-        only_models=("mimo",),
-        notes="official containerized runner; host must be set up per the Toolathlon README (apps, tokens, Docker)",
-    )
-)
-_reg(
-    BenchInfo(
-        "mimo_osw",
-        "OSWorld-Verified (MiMo)",
-        4,
-        ("extras",),
-        "mimo_osw",
-        "OSWorld",
-        adapter="benchlab.adapters.osworld:OSWorldAdapter",
-        n_tasks_default=369,
-        tokens_in_per_task=40000,
-        tokens_out_per_task=4000,
-        needs_docker=True,
-        only_models=("mimo",),
-        notes="needs VMs (docker+KVM / aws) and a vision model; harness-fixed sampling",
-    )
-)
-_reg(
-    BenchInfo(
-        "s5_api",
-        "Step 5 core via API",
-        4,
-        ("extras",),
-        "s5_api",
-        "core suite",
-        adapter=None,
-        only_models=("step5",),
-        notes="computed by `benchlab report`: mean of core scores on step5",
-    )
-)
-_reg(
-    BenchInfo(
-        "s5_self",
-        "Step 5 core self-hosted",
-        4,
-        ("extras",),
-        "s5_self",
-        "core suite",
-        adapter=None,
-        only_models=("step5self",),
-        notes="computed by `benchlab report`: mean of core scores on step5self (+ gap vs step5)",
-    )
-)
-_reg(
-    BenchInfo(
-        "s5_tok",
-        "Step 5 output tokens/task",
-        4,
-        ("extras",),
-        "s5_tok",
-        "usage logs",
-        adapter=None,
-        only_models=("step5", "step5self"),
-        notes="computed by `benchlab report`: output tokens per task, self-hosted vs API",
-    )
-)
-_reg(
-    BenchInfo(
-        "ds_auto",
-        "AutomationBench (DeepSeek)",
-        4,
-        ("extras",),
-        "ds_auto",
+        "autobench",
         "AutomationBench",
         adapter="benchlab.adapters.automationbench:AutomationBenchAdapter",
         n_tasks_default=600,
         tokens_in_per_task=60000,
         tokens_out_per_task=3000,
-        only_models=("dsflash",),
-        notes="public 600-task set (not the held-out leaderboard set); add ds_auto to another model's extras to run it there too",
-    )
-)
-_reg(
-    BenchInfo(
-        "ds_cps",
-        "cost per solved task (DeepSeek)",
-        4,
-        ("extras",),
-        "ds_cps",
-        "usage logs",
-        adapter=None,
-        only_models=("dsflash",),
-        notes="computed by `benchlab report`: USD per solved core task",
-    )
-)
-_reg(
-    BenchInfo(
-        "ds_lps",
-        "latency per solved task (DeepSeek)",
-        4,
-        ("extras",),
-        "ds_lps",
-        "usage logs",
-        adapter=None,
-        only_models=("dsflash",),
-        notes="computed by `benchlab report`: wall seconds per solved core task",
-    )
-)
-_reg(
-    BenchInfo(
-        "glm_aider",
-        "Aider Polyglot (GLM)",
-        4,
-        ("extras",),
-        "glm_aider",
-        "aider benchmark (docker)",
-        adapter="benchlab.adapters.aider:AiderGLM",
-        only_models=("glm",),
-        needs_docker=True,
-        n_tasks_default=225,
-        tokens_in_per_task=8000,
-        tokens_out_per_task=2000,
-    )
-)
-_reg(
-    BenchInfo(
-        "ml4_aider",
-        "Aider Polyglot (Mistral)",
-        4,
-        ("extras",),
-        "ml4_aider",
-        "aider benchmark (docker)",
-        adapter="benchlab.adapters.aider:AiderML4",
-        only_models=("ml4",),
-        needs_docker=True,
-        n_tasks_default=225,
-        tokens_in_per_task=8000,
-        tokens_out_per_task=2000,
-    )
-)
-_reg(
-    BenchInfo(
-        "q27_lcb",
-        "LiveCodeBench (Qwen3.8-27B)",
-        4,
-        ("extras",),
-        "q27_lcb",
-        "LiveCodeBench",
-        adapter="benchlab.adapters.livecodebench:LCBQwen27",
-        only_models=("qwen27",),
-        tokens_in_per_task=1500,
-        tokens_out_per_task=2500,
-    )
-)
-_reg(
-    BenchInfo(
-        "gpt_sanity",
-        "gpt-oss-120b sanity vs published",
-        4,
-        ("extras",),
-        "gpt_sanity",
-        "core suite",
-        adapter=None,
-        only_models=("gptoss",),
-        notes="computed by `benchlab report`: worst deviation vs `published` scores",
+        notes="public 600-task set (not the held-out leaderboard set); add autobench to a model's extras to run it",
     )
 )
 
@@ -463,7 +276,6 @@ _reg(
         "mteb_ret",
         "mteb",
         adapter="benchlab.adapters.retrieval:MTEBRetrievalAdapter",
-        only_models=("qemb",),
         n_tasks_default=10,
     )
 )
@@ -476,7 +288,6 @@ _reg(
         "mteb_rr",
         "mteb",
         adapter="benchlab.adapters.retrieval:MTEBRerankingAdapter",
-        only_models=("qemb",),
         n_tasks_default=3,
     )
 )
@@ -489,7 +300,6 @@ _reg(
         "beir",
         "mteb (BEIR benchmark)",
         adapter="benchlab.adapters.retrieval:BEIRAdapter",
-        only_models=("qemb",),
         n_tasks_default=8,
         aliases=("beir_rr",),
     )
@@ -503,7 +313,6 @@ _reg(
         "own",
         "mteb (custom task on retrieval/)",
         adapter="benchlab.adapters.retrieval:OwnDataAdapter",
-        only_models=("qemb",),
         n_tasks_default=1,
         aliases=("own_rec", "own_rec_rr", "own_ndcg", "own_ndcg_rr"),
     )
@@ -534,7 +343,7 @@ _reg(
 
 SUITES = ("core", "coder", "extras", "retrieval", "serving")
 STAGE_BENCHES = {
-    1: ("gpqa", "bfcl"),
+    1: ("apptasks", "gpqa", "bfcl"),
     2: ("t2air", "t2ret", "t2tel"),
     3: ("tb", "swe"),
     4: tuple(k for k, b in BENCHES.items() if b.stage == 4),

@@ -3,8 +3,7 @@
 Reads every finished run under ``runs/`` (the newest non-smoke run per
 (model, bench) wins; smoke runs are used only when nothing else exists and are
 flagged), merges the adapters' tracker entries, derives the aggregate keys the
-tracker expects (``cost``, ``gpt_sanity``, ``s5_api``/``s5_self``/``s5_tok``,
-``ds_cps``/``ds_lps``, ``srv_match``, ``claude__coder_*``) and renders one
+tracker expects (``cost``, ``srv_match``) and renders one
 static HTML page: models x benchmarks with the delta against the baseline,
 cost per task, serving / TTFT / retrieval tables and a "suspicious results"
 list. Nothing here re-scores anything: values come straight from result.json.
@@ -12,7 +11,6 @@ list. Nothing here re-scores anything: values come straight from result.json.
 
 from __future__ import annotations
 
-import html
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -25,7 +23,6 @@ from benchlab.registry import BENCHES, BenchInfo
 from benchlab.runs import RunDir
 
 CORE_SCORE_BENCHES = ("gpqa", "bfcl", "t2air", "t2ret", "t2tel", "tb", "swe", "gaia")
-CODER_BENCHES = ("lcb", "aider", "swe", "tb")
 NON_SCORE_BENCHES = {"ttft", "serving"}  # seconds / tokens per second, not percentages
 TAU2_BENCHES = ("t2air", "t2ret", "t2tel")
 TOOL_BENCHES = (
@@ -34,16 +31,7 @@ TOOL_BENCHES = (
     "t2ret",
     "t2tel",
 )  # where a self-hosted gap usually means a chat-template/tool-parser problem
-COMPUTED_KEYS = {
-    "cost",
-    "gpt_sanity",
-    "srv_match",
-    "s5_api",
-    "s5_self",
-    "s5_tok",
-    "ds_cps",
-    "ds_lps",
-}  # derived here
+COMPUTED_KEYS = {"cost", "srv_match"}  # derived here
 
 
 # --------------------------------------------------------------------------- #
@@ -193,7 +181,6 @@ def build_tracker(cfg: BenchConfig, col: Collected) -> dict[str, dict[str, str]]
                 "v": _f1(float(v)),
                 "note": "published score (reference model, not measured by BenchLab)",
             }
-    baseline = cfg.baseline
     for m in cfg.chat_models():
         tid = m.tracker
         # 2. <id>__cost: total USD over the core benches that have a result
@@ -207,53 +194,12 @@ def build_tracker(cfg: BenchConfig, col: Collected) -> dict[str, dict[str, str]]
             note = f"total USD over core benches from the usage logs: {parts}"
             if missing:
                 note += f"; no cost for {missing} (unpriced model or self-hosted)"
-            if m.id == "step5self":
-                pass  # shares tracker id with step5; keep the API cost (priced) rather than overwrite
-            else:
-                tracker[f"{tid}__cost"] = {"v": f"{total:.2f}", "note": note}
-        # 3. coder aliases for the baseline: claude__coder_lcb etc.
-        if m.id == baseline.id:
-            for b in CODER_BENCHES:
-                src = tracker.get(f"{tid}__{b}")
-                if src:
-                    tracker[f"{tid}__coder_{b}"] = dict(src)
-        # 4. sanity vs published (gpt_sanity for gptoss; any model with `published`)
-        if "gpt_sanity" in m.extras:
-            tracker[f"{tid}__gpt_sanity"] = _sanity_entry(cfg, col, m)
-        # 5. self-hosted vs API counterpart: <id>__srv_match
+            tracker[f"{tid}__cost"] = {"v": f"{total:.2f}", "note": note}
+        # 3. self-hosted vs API counterpart: <id>__srv_match
         if m.self_hosted:
             entry = _srv_match_entry(cfg, col, m)
             if entry:
                 tracker[f"{tid}__srv_match"] = entry
-        # 6. cost / latency per solved task (ds_cps, ds_lps)
-        if "ds_cps" in m.extras or "ds_lps" in m.extras:
-            cps, lps = _per_solved(col, m)
-            if "ds_cps" in m.extras:
-                tracker[f"{tid}__ds_cps"] = cps
-            if "ds_lps" in m.extras:
-                tracker[f"{tid}__ds_lps"] = lps
-    # 7. Step 5: API vs self-hosted aggregates
-    api = next((m for m in cfg.chat_models() if "s5_api" in m.extras), None)
-    own = next((m for m in cfg.chat_models() if "s5_self" in m.extras), None)
-    if api:
-        tracker[f"{api.tracker}__s5_api"] = _core_mean_entry(col, api, own)
-    if own:
-        tracker[f"{own.tracker}__s5_self"] = _core_mean_entry(col, own, api)
-    if api and own:
-        tracker[f"{own.tracker}__s5_tok"] = _tokens_per_task_entry(col, own, api)
-    elif own or api:
-        mm = own or api
-        tracker[f"{mm.tracker}__s5_tok"] = _tokens_per_task_entry(col, mm, None)
-    # 8. benches without an integration: explicit n/a so the tracker is complete
-    known = {m.id for m in cfg.models}
-    for b in BENCHES.values():
-        if b.adapter is None and b.key not in COMPUTED_KEYS:
-            for mid in b.only_models:
-                if mid not in known:
-                    continue
-                k = f"{_tracker_id(cfg, mid)}__{b.tracker_key}"
-                if k not in tracker:
-                    tracker[k] = {"v": "n/a", "note": f"not integrated: {b.notes or b.harness}"}
     return dict(sorted(tracker.items()))
 
 
@@ -297,46 +243,6 @@ def _common_core(col: Collected, a: ModelSpec, b: ModelSpec | None) -> list[str]
     return out
 
 
-def _core_mean_entry(col: Collected, m: ModelSpec, other: ModelSpec | None) -> dict[str, str]:
-    benches = _common_core(col, m, other)
-    if not benches:
-        return {
-            "v": "n/a",
-            "note": "no core results yet" + (f" shared with {other.id}" if other else ""),
-        }
-    vals = [_score(col, m.id, b) for b in benches]
-    mean = sum(vals) / len(vals)
-    note = f"mean of core scores over {benches}: " + ", ".join(
-        f"{b} {v:.1f}" for b, v in zip(benches, vals, strict=True)
-    )
-    if other:
-        ov = [_score(col, other.id, b) for b in benches]
-        om = sum(ov) / len(ov)
-        note += f"; {other.id} mean {om:.1f} on the same benches (gap {mean - om:+.1f})"
-    return {"v": _f1(mean), "note": note}
-
-
-def _tokens_per_task_entry(col: Collected, m: ModelSpec, other: ModelSpec | None) -> dict[str, str]:
-    benches = _common_core(col, m, other)
-    es = [col.get(m.id, b) for b in benches]
-    es = [e for e in es if e and e.n_tasks]
-    if not es:
-        return {"v": "n/a", "note": "no core results yet"}
-    tot = sum(int(e.result.get("tokens_out") or 0) for e in es)
-    n = sum(e.n_tasks * e.trials for e in es)
-    v = tot / n
-    note = f"output tokens per task-attempt over {benches} ({m.id})"
-    if other:
-        oes = [col.get(other.id, b) for b in benches]
-        oes = [e for e in oes if e and e.n_tasks]
-        if oes:
-            ov = sum(int(e.result.get("tokens_out") or 0) for e in oes) / sum(
-                e.n_tasks * e.trials for e in oes
-            )
-            note += f"; {other.id}: {ov:.0f} tokens/task (ratio {v / ov:.2f}x)" if ov else ""
-    return {"v": f"{v:.0f}", "note": note}
-
-
 def _srv_match_entry(cfg: BenchConfig, col: Collected, m: ModelSpec) -> dict[str, str] | None:
     """Self-hosted vs API counterpart (compare_to) on common core benches; else vs published."""
     if m.compare_to:
@@ -365,34 +271,6 @@ def _srv_match_entry(cfg: BenchConfig, col: Collected, m: ModelSpec) -> dict[str
         "v": "n/a",
         "note": "set compare_to (API counterpart id) or published scores on the model to compute the gap",
     }
-
-
-def _per_solved(col: Collected, m: ModelSpec) -> tuple[dict[str, str], dict[str, str]]:
-    """Cost / wall seconds per solved task: on AutomationBench when that run exists (the
-    DeepSeek extra asks for it there), else over the core benches."""
-    ab = col.get(m.id, "ds_auto")
-    es = [ab] if ab and ab.solved is not None else [col.get(m.id, b) for b in CORE_SCORE_BENCHES]
-    es = [e for e in es if e and e.solved is not None]
-    solved = sum(e.solved for e in es)
-    benches = [e.bench for e in es]
-    if not es or solved <= 0:
-        na = {"v": "n/a", "note": "no solved core tasks yet"}
-        return na, na
-    priced = [e for e in es if e.cost is not None]
-    if priced:
-        ps = sum(e.solved for e in priced)
-        cps = {
-            "v": f"{sum(e.cost for e in priced) / ps:.4f}",
-            "note": f"USD per solved task-attempt over {[e.bench for e in priced]} (cost from usage logs / estimated solved = n*trials*score)",
-        }
-    else:
-        cps = {"v": "n/a", "note": "no priced runs (set price_in/out_per_mtok)"}
-    wall = sum(float(e.result.get("wall_time_s") or 0) for e in es)
-    lps = {
-        "v": f"{wall / solved:.1f}",
-        "note": f"wall seconds per solved task-attempt over {benches} (run wall time / estimated solved)",
-    }
-    return cps, lps
 
 
 # --------------------------------------------------------------------------- #
@@ -505,227 +383,114 @@ def suspicious(cfg: BenchConfig, col: Collected) -> list[dict[str, str]]:
 
 
 # --------------------------------------------------------------------------- #
-# HTML
+# comparison: what the panel's Results page and report.html both show
 # --------------------------------------------------------------------------- #
-CSS = """
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:24px;color:#1b1b1b;background:#fff}
-h1{margin:0 0 4px} h2{margin:32px 0 8px;font-size:1.15rem} .muted{color:#666;font-size:.9rem}
-table{border-collapse:collapse;font-size:.85rem;margin-top:8px} th,td{border:1px solid #ddd;padding:4px 8px;text-align:right;vertical-align:top}
-th{background:#f3f3f3;position:sticky;top:0} td:first-child,th:first-child{text-align:left;font-weight:600;white-space:nowrap}
-.pos{color:#0a7a2f} .neg{color:#b3261e} .sub{display:block;color:#777;font-size:.72rem;font-weight:400}
-tr.ref td{font-style:italic;color:#555;background:#f7f7fb} .base{background:#fbfbe6} .smoke{outline:2px dashed #e0a800} .na{color:#bbb}
-ul.susp li{margin:4px 0} .hint{color:#555} code{background:#f3f3f3;padding:0 3px}
-.wrap{overflow-x:auto}
-"""
+LOWER_BETTER = {"ttft"}  # seconds: smaller is better
 
 
-def _esc(x: Any) -> str:
-    return html.escape("" if x is None else str(x))
+def _bench_info(key: str) -> BenchInfo:
+    return BENCHES.get(key) or BenchInfo(key, key, 4, (), key, "")
 
 
-def _delta_cell(
-    v: float | None, base: float | None, lower_better: bool = False, nd: int = 1
-) -> str:
-    if v is None:
-        return '<span class="na">-</span>'
-    if base is None:
-        return f"{v:.{nd}f}"
-    d = v - base
-    good = d < 0 if lower_better else d > 0
-    cls = "pos" if good else ("neg" if d != 0 else "")
-    return f'{v:.{nd}f} <span class="{cls}">({d:+.{nd}f})</span>'
+def comparison(cfg: BenchConfig, col: Collected, failures: int = 0) -> dict[str, Any]:
+    """Models x benchmarks with scores, the delta vs the baseline, tests passed / failed,
+    cost and time; a per-model summary; and up to ``failures`` failed tests per cell
+    (prompts and answers) for the exported report."""
+    from benchlab import samples
 
-
-def _cell(
-    e: Entry | None,
-    base: Entry | None,
-    lower_better: bool = False,
-    nd: int = 1,
-    baseline: bool = False,
-) -> str:
-    if e is None:
-        return '<td class="na">-</td>'
-    cls = []
-    if baseline:
-        cls.append("base")
-    if e.smoke:
-        cls.append("smoke")
-    v = e.primary
-    body = _delta_cell(v, None if baseline else (base.primary if base else None), lower_better, nd)
-    sub = f"n={e.n_tasks}" + (f"×{e.trials}" if e.trials > 1 else "")
-    if e.cost is not None:
-        sub += f" ${e.cost:.2f}"
-    if e.error_total:
-        sub += f" err={e.error_total}"
-    if e.smoke:
-        sub += " SMOKE"
-    return f'<td class="{" ".join(cls)}">{body}<span class="sub">{_esc(sub)}</span></td>'
+    base_id = cfg.baseline.id
+    benches = [_bench_info(b) for b in col.benches_with_results()]
+    models = [
+        m for m in cfg.models if not m.reference and any(col.get(m.id, b.key) for b in benches)
+    ]
+    cells: dict[str, dict[str, dict[str, Any]]] = {}
+    for m in models:
+        row = cells.setdefault(m.id, {})
+        for b in benches:
+            e = col.get(m.id, b.key)
+            if e is None:
+                continue
+            base = col.get(base_id, b.key)
+            try:
+                detail = samples.load(e.run)
+            except Exception:  # noqa: BLE001 - a broken raw file must not break the page
+                detail = {"counts": {"pass": 0, "fail": 0, "error": 0}, "samples": []}
+            attempts = max(1, e.n_tasks * e.trials)
+            toks = int(e.result.get("tokens_in") or 0) + int(e.result.get("tokens_out") or 0)
+            row[b.key] = {
+                "value": e.primary,
+                "metric": e.result.get("primary_metric"),
+                "base": None if m.id == base_id or base is None else base.primary,
+                "is_base": m.id == base_id,
+                "pct": b.key not in NON_SCORE_BENCHES,
+                "lower": b.key in LOWER_BETTER,
+                "n": e.n_tasks,
+                "trials": e.trials,
+                "cost": e.cost,
+                "wall": float(e.result.get("wall_time_s") or 0) or None,
+                "errors": e.error_total,
+                "smoke": e.smoke,
+                "run": e.run.name,
+                "date": e.date,
+                "warnings": e.result.get("warnings") or [],
+                "note": e.result.get("note") or "",
+                "tokens_per_task": toks / attempts if toks else None,
+                "counts": detail["counts"],
+                "failures": [s for s in detail["samples"] if s["status"] != "pass"][:failures],
+            }
+    summary = {}
+    for m in models:
+        row = cells.get(m.id, {})
+        pct = {k: c for k, c in row.items() if c["pct"] and c["value"] is not None}
+        deltas = [c["value"] - c["base"] for c in pct.values() if c["base"] is not None]
+        counts = {
+            k: sum(c["counts"].get(k, 0) for c in row.values()) for k in ("pass", "fail", "error")
+        }
+        costs = [c["cost"] for c in row.values() if c["cost"] is not None]
+        summary[m.id] = {
+            "benches": len(row),
+            "mean": sum(c["value"] for c in pct.values()) / len(pct) if pct else None,
+            "delta": sum(deltas) / len(deltas) if deltas else None,
+            "delta_n": len(deltas),
+            "counts": counts,
+            "cost": sum(costs) if costs else None,
+            "wall": sum(c["wall"] or 0 for c in row.values()) or None,
+            "errors": sum(c["errors"] for c in row.values()),
+            "smoke": any(c["smoke"] for c in row.values()),
+        }
+    return {
+        "models": models,
+        "benches": benches,
+        "cells": cells,
+        "summary": summary,
+        "baseline": cfg.baseline,
+        "references": [m for m in cfg.reference_models() if m.published],
+    }
 
 
 def render_html(
-    cfg: BenchConfig, col: Collected, tracker: dict[str, dict[str, str]], susp: list[dict[str, str]]
+    cfg: BenchConfig,
+    col: Collected,
+    tracker: dict[str, dict[str, str]],
+    susp: list[dict[str, str]],
+    failures: int = 25,
 ) -> str:
-    baseline = cfg.baseline
-    chat = cfg.chat_models()
-    benches = col.benches_with_results()
-    score_benches = [
-        b
-        for b in benches
-        if b not in NON_SCORE_BENCHES
-        and BENCHES.get(b, BenchInfo(b, b, 4, (), b, "")).suites != ("retrieval",)
-        and b not in ("mteb_ret", "mteb_rr", "beir", "own")
-    ]
-    now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    H: list[str] = [
-        "<!doctype html><html lang='en'><head><meta charset='utf-8'><title>BenchLab report</title>",
-        f"<style>{CSS}</style></head><body>",
-        f"<h1>BenchLab report</h1><div class='muted'>generated {now} · benchlab {__version__} · baseline <b>{_esc(baseline.name)}</b> ({_esc(baseline.id)}) · "
-        f"{len(col.entries)} (model, bench) results from {len(col.all_runs)} finished runs in <code>{_esc(cfg.settings.runs_dir)}</code>. "
-        "Cells: score (delta vs baseline in points); n = tasks×trials, $ = run cost from the usage logs, err = timeouts+API errors+malformed tool calls. "
-        "Dashed outline = smoke run only. Italic rows = reference models: published scores, "
-        "not measured by BenchLab and not comparable point-for-point (different harness settings and subsets).</div>",
-    ]
-    # ---- main table
-    H.append("<h2>Scores: models × benchmarks</h2><div class='wrap'><table><tr><th>model</th>")
-    for b in score_benches:
-        bi = BENCHES.get(b)
-        H.append(
-            f"<th title='{_esc(bi.harness if bi else '')}'>{_esc(bi.display if bi else b)}<span class='sub'>{_esc(b)}</span></th>"
-        )
-    H.append("<th>TTFT p50 s</th><th>core cost $</th></tr>")
-    for m in cfg.reference_models():  # published numbers, not measured here: no deltas
-        H.append(
-            f"<tr class='ref'><td>{_esc(m.name)}<span class='sub'>{_esc(m.id)} · reference, published</span></td>"
-        )
-        for b in score_benches:
-            v = m.published.get(b)
-            H.append(
-                "<td class=na>-</td>"
-                if v is None
-                else f"<td class='ref'>{float(v):.1f}<span class='sub'>published</span></td>"
-            )
-        H.append("<td class=na>-</td><td class=na>-</td></tr>")
-    for m in chat:
-        is_base = m.id == baseline.id
-        H.append(
-            f"<tr><td{' class=base' if is_base else ''}>{_esc(m.name)}<span class='sub'>{_esc(m.id)}{' · self-hosted' if m.self_hosted else ''}</span></td>"
-        )
-        for b in score_benches:
-            H.append(_cell(col.get(m.id, b), col.get(baseline.id, b), baseline=is_base))
-        H.append(
-            _cell(
-                col.get(m.id, "ttft"),
-                col.get(baseline.id, "ttft"),
-                lower_better=True,
-                nd=2,
-                baseline=is_base,
-            )
-        )
-        cost = tracker.get(f"{m.tracker}__cost", {}).get("v") if not m.compare_to else None
-        H.append(f"<td>{_esc(cost) if cost else '<span class=na>-</span>'}</td></tr>")
-    H.append("</table></div>")
-    # ---- cost per task
-    H.append(
-        "<h2>Cost per task (USD per task-attempt) and tokens</h2><div class='wrap'><table><tr><th>model</th>"
-    )
-    for b in score_benches:
-        H.append(f"<th>{_esc(b)}</th>")
-    H.append("</tr>")
-    for m in chat:
-        H.append(f"<tr><td>{_esc(m.id)}</td>")
-        for b in score_benches:
-            e = col.get(m.id, b)
-            if e is None or e.cost_per_task is None:
-                H.append("<td class=na>-</td>")
-            else:
-                tok = (
-                    int(e.result.get("tokens_in") or 0) + int(e.result.get("tokens_out") or 0)
-                ) / max(1, e.n_tasks * e.trials)
-                H.append(
-                    f"<td>{e.cost_per_task:.4f}<span class='sub'>{tok:,.0f} tok/task</span></td>"
-                )
-        H.append("</tr>")
-    H.append("</table></div>")
-    # ---- serving
-    srv = [(m, col.get(m.id, "serving")) for m in chat if col.get(m.id, "serving")]
-    if srv:
-        H.append(
-            "<h2>Serving (self-hosted)</h2><div class='wrap'><table><tr><th>model</th><th>quant</th><th>GPUs</th><th>GPU mem GB</th><th>TTFT p50 s (c=1)</th><th>tok/s per request</th><th>total tok/s c=1</th><th>c=8</th><th>c=32</th><th>vs API (pts)</th><th>tool</th></tr>"
-        )
-        for m, e in srv:
+    """A self-contained report.html with the panel's look (styles and script inlined)."""
+    from benchlab.ui import render
 
-            def t(k: str, tid: str = m.tracker) -> str:
-                return _esc(tracker.get(f"{tid}__{k}", {}).get("v", "-"))
-
-            H.append(
-                f"<tr><td>{_esc(m.id)}</td><td>{t('srv_quant')}</td><td>{t('srv_gpus')}</td><td>{t('srv_mem')}</td><td>{t('srv_ttft')}</td><td>{t('srv_tps')}</td><td>{t('srv_c1')}</td><td>{t('srv_c8')}</td><td>{t('srv_c32')}</td><td>{t('srv_match')}</td><td>{_esc((e.result.get('harness') or {}).get('name', ''))}</td></tr>"
-            )
-        H.append("</table></div>")
-    # ---- retrieval
-    ret = [
-        (m, b, col.get(m.id, b))
-        for m in cfg.models
-        if m.kind != "chat"
-        for b in ("mteb_ret", "mteb_rr", "beir", "own")
-        if col.get(m.id, b)
-    ]
-    if ret:
-        H.append(
-            "<h2>Retrieval</h2><div class='wrap'><table><tr><th>model</th><th>bench</th><th>metrics</th><th>tracker</th></tr>"
-        )
-        for m, b, e in ret:
-            mets = ", ".join(
-                f"{k}={v:.1f}"
-                for k, v in e.result["metrics"].items()
-                if isinstance(v, (int, float))
-            )
-            tk = ", ".join(f"{k}={v['v']}" for k, v in (e.result.get("tracker") or {}).items())
-            H.append(
-                f"<tr><td>{_esc(m.id)}</td><td>{_esc(b)}</td><td style='text-align:left'>{_esc(mets)}</td><td style='text-align:left'>{_esc(tk)}</td></tr>"
-            )
-        H.append("</table></div>")
-    # ---- suspicious
-    H.append(f"<h2>Suspicious results ({len(susp)})</h2>")
-    if susp:
-        H.append("<ul class='susp'>")
-        for s in susp:
-            H.append(
-                f"<li><b>{_esc(s['model'])}</b> / {_esc(s['bench'])}: {_esc(s['why'])}"
-                + (f" <span class='hint'>→ {_esc(s['hint'])}</span>" if s["hint"] else "")
-                + (f" <span class='muted'>[{_esc(s['run'])}]</span>" if s["run"] else "")
-                + "</li>"
-            )
-        H.append("</ul>")
-    else:
-        H.append("<div class='muted'>nothing flagged</div>")
-    # ---- derived tracker keys
-    derived = {
-        k: v
-        for k, v in tracker.items()
-        if k.split("__", 1)[-1]
-        in ("cost", "gpt_sanity", "srv_match", "s5_api", "s5_self", "s5_tok", "ds_cps", "ds_lps")
-    }
-    if derived:
-        H.append(
-            "<h2>Derived tracker keys</h2><div class='wrap'><table><tr><th>key</th><th>value</th><th>note</th></tr>"
-        )
-        for k, v in derived.items():
-            H.append(
-                f"<tr><td>{_esc(k)}</td><td>{_esc(v['v'])}</td><td style='text-align:left'>{_esc(v['note'])}</td></tr>"
-            )
-        H.append("</table></div>")
-    # ---- run index
-    H.append(
-        "<h2>Runs used</h2><div class='wrap'><table><tr><th>model</th><th>bench</th><th>run</th><th>date</th><th>harness</th><th>primary</th><th>note</th></tr>"
+    env = render.standalone_env()
+    return env.get_template("report.html").render(
+        cmp=comparison(cfg, col, failures=failures),
+        susp=susp,
+        tracker=tracker,
+        cfg=cfg,
+        col=col,
+        live=False,
+        generated=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+        version=__version__,
+        css=(render.STATIC / "app.css").read_text(encoding="utf-8"),
+        js=(render.STATIC / "app.js").read_text(encoding="utf-8"),
     )
-    for (mid, b), e in sorted(col.entries.items()):
-        h = e.result.get("harness") or {}
-        hv = h.get("version") or h.get("commit") or h.get("guidellm") or h.get("tag") or ""
-        H.append(
-            f"<tr><td>{_esc(mid)}</td><td>{_esc(b)}</td><td style='text-align:left'><code>{_esc(e.run.name)}</code></td><td>{_esc(e.date)}</td><td style='text-align:left'>{_esc(h.get('name') or h.get('package') or '')} {_esc(hv)}</td><td>{'-' if e.primary is None else f'{e.primary:.2f}'}</td><td style='text-align:left'>{_esc(e.result.get('note', ''))}</td></tr>"
-        )
-    H.append("</table></div></body></html>")
-    return "\n".join(H)
 
 
 # --------------------------------------------------------------------------- #

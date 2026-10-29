@@ -102,14 +102,34 @@ _DUMP_LOG = """
 import json, sys
 from inspect_ai.log import read_eval_log
 log = read_eval_log(sys.argv[1])
-d = log.model_dump(mode="json", exclude={"samples": {"__all__": {"events", "attachments", "store", "input", "output"}}})
-# keep only what we need from messages (tool-call parse errors) to keep the dump small
+d = log.model_dump(mode="json", exclude={"samples": {"__all__": {"events", "store"}}})
+LIMIT = 6000
+
+def short(x, att):
+    # large message parts are stored once as attachment://<id>; put the text back
+    if isinstance(x, str):
+        if x.startswith("attachment://"):
+            x = att.get(x[len("attachment://"):], x)
+        return x if len(x) <= LIMIT else x[:LIMIT] + " [...]"
+    if isinstance(x, list):
+        return [short(v, att) for v in x]
+    if isinstance(x, dict):
+        return {k: short(v, att) for k, v in x.items()}
+    return x
+
+# keep what the per-test view needs (prompts, answer, tool calls, scores), trimmed
 for s in d.get("samples") or []:
+    att = s.pop("attachments", None) or {}
     msgs = []
     for m in s.get("messages") or []:
-        if m.get("role") == "assistant" and m.get("tool_calls"):
-            msgs.append({"role": "assistant", "tool_calls": [{"function": tc.get("function"), "parse_error": tc.get("parse_error")} for tc in m["tool_calls"]]})
+        tcs = [{"function": tc.get("function"), "arguments": short(tc.get("arguments"), att),
+                "parse_error": tc.get("parse_error")} for tc in (m.get("tool_calls") or [])]
+        msgs.append({"role": m.get("role"), "content": short(m.get("content"), att), "tool_calls": tcs or None})
     s["messages"] = msgs
+    s["input"] = short(s.get("input"), att)
+    out = s.get("output") or {}
+    s["output"] = {"completion": short(out.get("completion"), att), "error": out.get("error"), "usage": out.get("usage")}
+    s["scores"] = short(s.get("scores"), att)
 print(json.dumps(d))
 """
 

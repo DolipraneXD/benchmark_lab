@@ -28,6 +28,8 @@ EDITABLE = (
     "provider",
     "base_url",
     "model",
+    "api_version",
+    "region",
     "api_key_env",
     "kind",
     "self_hosted",

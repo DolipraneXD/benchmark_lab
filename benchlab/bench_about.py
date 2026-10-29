@@ -24,14 +24,16 @@ LCB = (
     "LiveCodeBench: competitive-programming problems released after the model's "
     "knowledge cutoff, so they can't have been memorized."
 )
-RULER = (
-    "RULER: long-context tests. Finding, tracking and combining information spread over "
-    "inputs of up to 128k tokens."
-)
 MTEB = "MTEB: the standard embedding benchmark; here its English retrieval and reranking tasks."
 
 GH = "https://github.com/"
 ABOUT: dict[str, tuple[str, str | None]] = {
+    "apptasks": (
+        "App tasks: your own cases in evals/*.yaml, written for your product: instructions, "
+        "JSON extraction, classification, answers from your documents, tool calls, privacy "
+        "and prompt-injection resistance. Each case has checks on the answer.",
+        None,
+    ),
     "gpqa": (
         "GPQA Diamond: 198 graduate-level multiple-choice questions in biology, physics "
         "and chemistry, written to be hard to look up. Measures expert reasoning.",
@@ -55,7 +57,6 @@ ABOUT: dict[str, tuple[str, str | None]] = {
         GH + "sierra-research/tau2-bench",
     ),
     "tb": (TB, GH + "laude-institute/terminal-bench"),
-    "lag_tb21": (TB, GH + "laude-institute/terminal-bench"),
     "swe": (
         "SWE-bench Verified: 500 real GitHub issues from Python projects, checked by "
         "people. The model writes a patch and the project's own tests decide.",
@@ -76,28 +77,13 @@ ABOUT: dict[str, tuple[str, str | None]] = {
         "streamed prompts. BenchLab's own probe.",
         None,
     ),
-    "lag_ruler": (RULER, GH + "NVIDIA/RULER"),
-    "mimo_long": (RULER, GH + "NVIDIA/RULER"),
-    "mimo_tool": (
-        "Toolathlon: long, multi-step tasks across real apps and tools (email, Canvas, "
-        "Kubernetes and more), run in the official containers.",
-        GH + "hkust-nlp/Toolathlon",
-    ),
-    "mimo_osw": (
-        "OSWorld-Verified: computer-use tasks in a real desktop virtual machine, driven "
-        "from screenshots.",
-        GH + "xlang-ai/OSWorld",
-    ),
-    "ds_auto": (
+    "autobench": (
         "AutomationBench: business automation tasks over simulated SaaS tools (CRM, email, "
         "tickets and more).",
         GH + "zapier/AutomationBench",
     ),
     "aider": (AIDER, GH + "Aider-AI/polyglot-benchmark"),
-    "glm_aider": (AIDER, GH + "Aider-AI/polyglot-benchmark"),
-    "ml4_aider": (AIDER, GH + "Aider-AI/polyglot-benchmark"),
     "lcb": (LCB, GH + "LiveCodeBench/LiveCodeBench"),
-    "q27_lcb": (LCB, GH + "LiveCodeBench/LiveCodeBench"),
     "mteb_ret": (MTEB, GH + "embeddings-benchmark/mteb"),
     "mteb_rr": (MTEB, GH + "embeddings-benchmark/mteb"),
     "beir": (

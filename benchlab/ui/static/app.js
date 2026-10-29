@@ -112,6 +112,47 @@
       if (e.target.closest(".bench-tip .tip") && !e.target.closest("a")) e.preventDefault();
     });
 
+    // model form: show the fields the chosen provider needs, with its own hints
+    const prov = document.querySelector("[data-provider]");
+    if (prov) {
+      const form = prov.closest("form");
+      const field = (n) => form.querySelector(`[data-field='${n}']`);
+      const sync = () => {
+        const o = prov.selectedOptions[0].dataset;
+        field("base").hidden = o.base === "none";
+        field("version").hidden = !o.version;
+        field("region").hidden = !o.region;
+        form.querySelector("#f-base").required = o.base === "required";
+        form.querySelector("[data-base-hint]").textContent =
+          o.base === "required" ? "required" : o.baseDefault ? `default ${o.baseDefault}` : "optional";
+        form.querySelector("#f-model").placeholder = o.example ? `e.g. ${o.example}` : "";
+        form.querySelector("[data-provider-note]").textContent = o.key
+          ? "Needs an API key (below)."
+          : "Usually no API key: choose \u201cNo key needed\u201d below unless yours has one.";
+      };
+      prov.addEventListener("change", sync);
+      sync();
+    }
+
+    // test list on a run page: paging, and back to page 1 when a filter changes
+    document.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-page]");
+      const f = document.getElementById("tests-filter");
+      if (!b || !f) return;
+      f.elements.page.value = b.dataset.page;
+      f.dispatchEvent(new Event("change"));
+      document.getElementById("tests").scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+    const tf = document.getElementById("tests-filter");
+    if (tf) {
+      tf.addEventListener("input", (e) => {
+        if (e.target.name === "page") return;
+        tf.elements.page.value = 1;
+        if (e.target.type === "search") tf.dispatchEvent(new Event("change")); // live search
+      }, true);
+      tf.addEventListener("submit", (e) => e.preventDefault());
+    }
+
     // quick-pick buttons on the run page: select benches of a stage / all models
     document.querySelectorAll("[data-pick]").forEach((b) =>
       b.addEventListener("click", () => {

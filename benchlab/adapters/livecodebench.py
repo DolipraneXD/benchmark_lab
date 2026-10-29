@@ -370,8 +370,3 @@ class LCBAdapter(BenchAdapter):
         if cfg.get("smoke"):
             s += "; SMOKE"
         return s
-
-
-class LCBQwen27(LCBAdapter):
-    key = "q27_lcb"
-    display = "LiveCodeBench (Qwen3.8-27B)"

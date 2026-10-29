@@ -10,7 +10,6 @@ from benchlab.adapters.harbor import (
     AGENT,
     SUBSET_SEED,
     SWEBenchAdapter,
-    TerminalBench21Adapter,
     TerminalBenchAdapter,
     classify_exception,
 )
@@ -122,9 +121,6 @@ def test_prepare_checks(models_yaml, tmp_path, monkeypatch):
         and info["agent"] == AGENT
     )
     assert info["dataset_git_commit"] == "69671fba00" and info["harbor"] == "0.24.0"
-    tb21 = _adapter(TerminalBench21Adapter, cfg, tmp_path, monkeypatch)
-    with pytest.raises(HarnessNotReady, match=r"terminal-bench@2.1.*available versions.*2\.0"):
-        tb21.prepare()
 
 
 def test_classify_exception():

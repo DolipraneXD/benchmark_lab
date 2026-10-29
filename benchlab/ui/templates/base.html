@@ -18,7 +18,8 @@
     <a href="/" {{ 'aria-current=page' if p == '/' }}>Overview</a>
     <a href="/run" {{ 'aria-current=page' if p == '/run' }}>New run</a>
     <a href="/jobs" {{ 'aria-current=page' if p.startswith('/jobs') }}>Jobs{% if active_jobs %} <span class="count">{{ active_jobs }} running</span>{% endif %}</a>
-    <a href="/runs" {{ 'aria-current=page' if p.startswith('/runs') }}>Results</a>
+    <a href="/results" {{ 'aria-current=page' if p.startswith('/results') }}>Results</a>
+    <a href="/runs" {{ 'aria-current=page' if p.startswith('/runs') }}>Runs</a>
     <a href="/models" {{ 'aria-current=page' if p.startswith('/models') }}>Models</a>
     <a href="/import" {{ 'aria-current=page' if p.startswith('/import') }}>Import</a>
   </nav>

@@ -93,13 +93,32 @@ didn't), the tokens used and the cost. It exits with an error on any problem, so
 endpoint fails in seconds rather than an hour into a run.
 
 Useful fields:
-- `provider`: `openai_compatible` (needs `base_url`), `anthropic` or `bedrock`.
+- `provider`: which API the model is on (see [Providers](#providers)).
 - `extra_params: {temperature: null}` removes the default temperature for models that reject it.
 - `kind: embedding | reranker` marks retrieval models. They run only in the retrieval suite.
 - `suites` and `extras` choose which benchmarks a model gets. Chat models default to `core`.
 - `self_hosted: true` enables the serving benchmark for that model.
 - `reference: true` marks a model that is never called: only its `published` scores appear
   in the report.
+
+### Providers
+
+The panel's provider menu shows the fields each provider needs. LiteLLM handles each
+provider's protocol.
+
+| `provider` | For | Needs |
+|---|---|---|
+| `openai_compatible` | any OpenAI-style endpoint: vLLM, resellers, gateways | `base_url`; a key if the endpoint wants one |
+| `openai` | OpenAI | key |
+| `anthropic` | Anthropic | key (`base_url` optional) |
+| `mistral` | Mistral AI (La Plateforme) | key |
+| `gemini` | Google Gemini (AI Studio) | key |
+| `azure` | Azure OpenAI | `base_url` (resource endpoint), `api_version`, key; `model` is the deployment name |
+| `bedrock` | AWS Bedrock | `region` or `AWS_REGION_NAME`; AWS credentials from the usual AWS chain |
+| `deepseek`, `groq`, `xai`, `openrouter`, `together_ai`, `fireworks_ai`, `cohere` | those APIs | key |
+| `ollama` | a local Ollama server | nothing (`base_url` defaults to `http://localhost:11434`) |
+
+The model list is in `benchlab/providers.py`; to add one, add a line there.
 
 ### Roles
 
@@ -125,7 +144,7 @@ official weights, so use these runs to test the setup, not to decide.
 
 ```bash
 benchlab check --model all                              # test every model's connection first
-benchlab run --model minimax --stage 1 --dry-run            # show the plan and estimated cost
+benchlab run --model minimax --stage 1 --dry-run            # show the plan, estimated cost and time
 benchlab run --model minimax --stage 1 --smoke              # 2-3 tasks per bench, to check the setup
 benchlab run --model minimax --stage 1 --budget-usd 10      # the real run, stopped at $10
 benchlab run --model minimax --bench gpqa,bfcl              # specific benchmarks
@@ -145,7 +164,7 @@ Options for `benchlab run`:
 | `--trials N` | trials per task (τ²-bench defaults to 3) |
 | `--subset` | subset name or size understood by the benchmark |
 | `--budget-usd X` | stop cleanly once the run has spent X |
-| `--dry-run` | print the plan and the estimated cost, run nothing |
+| `--dry-run` | print the plan with estimated cost and time, run nothing |
 | `--smoke` | 2-3 tasks per benchmark |
 | `--no-resume` | start a new run instead of continuing the last unfinished one |
 | `-c, --config` | another config file (default `models.yaml`) |
@@ -160,10 +179,19 @@ continue where it stopped.
 - `usage.jsonl`: one line per request
 - `raw/`: the harness's own output
 - `result.json`: the scores
+- `samples.json`: every test with pass/fail, the prompts and the answer (built on first view)
 
-Every result is also added to `results/results.csv`. `benchlab report` collects all
-finished runs into `report.html`, flags suspicious results and lists them in
+Every result is also added to `results/results.csv`. `benchlab report` compares all
+finished runs in one self-contained `report.html`. It has the same layout as the panel's
+Results page, plus the first failed tests of each model with their prompts and answers. It
+also writes `results/tracker.json` and lists results worth a second look in
 `results/suspicious.json`.
+
+**Estimated time.** The plan estimates each pair's time. If the model has run that
+benchmark before, it uses its measured pace; otherwise it uses a typical pace for the
+benchmark spread over the model's parallel requests. Pairs run one after another, so the
+total is their sum. A benchmark's first run also installs its harness, which adds a few
+minutes.
 
 ### Stages
 
@@ -172,7 +200,7 @@ caught early.
 
 | Stage | Command | Benchmarks |
 |---|---|---|
-| 1 | `benchlab run -m all --stage 1` | GPQA Diamond, BFCL, TTFT probe (cheap) |
+| 1 | `benchlab run -m all --stage 1` | App tasks, GPQA Diamond, BFCL, TTFT probe (cheap) |
 | 2 | `benchlab run -m all --stage 2` | τ²-bench airline, retail, telecom |
 | 3 | `benchlab run -m all --stage 3` | Terminal-Bench 2.0, SWE-bench Verified (Docker) |
 | 4 | `benchlab run -m <ids> --stage 4` | GAIA, BrowseComp, coding, retrieval and serving benches, for chosen models |
@@ -181,6 +209,7 @@ caught early.
 
 | Key | Benchmark | Stage |
 |---|---|---|
+| `apptasks` | App tasks: your own cases in `evals/` (see below) | 1 |
 | `gpqa` | GPQA Diamond | 1 |
 | `bfcl` | BFCL (tool calling) | 1 |
 | `ttft` | time to first token probe | 1 |
@@ -193,9 +222,49 @@ caught early.
 | `aider` | Aider Polyglot | 4 |
 | `mteb_ret`, `mteb_rr`, `beir`, `own` | retrieval: MTEB retrieval and rerank, BEIR, your own data | 4 |
 | `serving` | serving benchmark (self-hosted models only) | 4 |
+| `autobench` | AutomationBench (opt in: add `autobench` to a model's `extras`) | 4 |
 | `redteam` | external red-team results, imported (see below) | — |
 
-`benchlab/registry.py` lists them all, including model-specific extras.
+Hover a benchmark's name in the panel to see what it measures and a link to its project.
+
+### App tasks (`apptasks`): your own cases
+
+The public benchmarks say how capable a model is in general. App tasks say how it does on
+**your** prompts. Cases live in `evals/*.yaml`. Each one has a system prompt and a user
+prompt (or a conversation), optional documents and tools, and checks on the answer. A case
+passes when every check passes.
+
+```yaml
+- id: extract-invoice
+  category: extraction
+  system: Extract invoice fields. Reply with JSON only, keys invoice_number, total, currency.
+  prompt: Invoice INV-2024-0457, amount 1.250,00 EUR.
+  checks:
+    json_includes: {invoice_number: INV-2024-0457, total: 1250, currency: EUR}
+```
+
+| Check | Passes when |
+|---|---|
+| `contains`, `contains_any`, `not_contains` | the answer has (or lacks) this text, ignoring case |
+| `regex`, `equals`, `max_words` | the answer matches the pattern, equals the text, stays under the length |
+| `json`, `json_includes`, `json_keys` | the answer is JSON (code fences allowed), with these values or keys |
+| `tool_call`, `tool_args`, `no_tool_call` | the model called this tool with these arguments, or no tool |
+| `judge` | the grader model says the answer meets the rubric. Skipped, with a warning, when the grader would be the model under test |
+
+`documents:` are added to the system prompt as numbered sources, for answers from your own
+docs. With `--trials 3`, each case runs three times and the result also reports how many
+cases passed every time (`consistent_cases`).
+
+The starter file `evals/app_tasks.yaml` has 23 cases for an AI app builder:
+- following instructions and answering in French
+- JSON extraction and ticket classification
+- answering only from documents, and saying so when the answer isn't there
+- choosing the right tool
+- not leaking other customers' data
+- resisting prompt injection
+- writing and fixing React or JavaScript code
+
+Edit them to match your product.
 
 ### Cheap mode (`profile: lite`)
 
@@ -268,7 +337,13 @@ changing its code.
   τ²-bench customer and the BrowseComp grader.
 - **Jobs:** live progress, requests, tokens, spend against the budget, and the log. Stop
   saves progress, and Resume continues the run.
-- **Results:** every run with its scores and warnings. Rebuild and open the report.
+- **Results:** every model against every benchmark: the score, its difference to the
+  baseline, how many tests passed, cost and time, and the results worth a second look.
+  **Export the report** writes the same view, with failed tests included, to one HTML file.
+- **Runs:** every run, newest first. A run's page lists **each test**: passed, failed or
+  error, filterable by status and category, with a text search. Open a test to see the
+  system prompt, the prompt, the model's answer, what was expected, why it failed and the
+  whole conversation.
 - **Import:** upload a red-team CSV for a model.
 
 A run started from the panel is the exact `benchlab run ...` command shown on its job page.
@@ -335,12 +410,16 @@ What the test files cover:
 | `test_tau2_adapter.py` | τ²-bench |
 | `test_harbor_adapter.py` | Terminal-Bench and SWE-bench |
 | `test_stage5_adapters.py` | Aider Polyglot and LiveCodeBench |
+| `test_autobench_adapter.py` | AutomationBench |
+| `test_apptasks.py` | app tasks: every check type, the starter cases, the judge, a full run through the CLI |
+| `test_samples.py` | per-test detail from each harness's output (Inspect, τ², red team, AutomationBench) |
+| `test_providers.py` | every provider routes correctly; incomplete models are refused |
+| `test_planning.py` | cost and time estimates, typical then measured pace |
 | `test_retrieval_adapter.py` | the retrieval pipeline |
 | `test_serving_adapters.py` | the TTFT probe and the serving benchmark |
-| `test_stage9_adapters.py` | AutomationBench, Toolathlon, OSWorld |
-| `test_report.py` | `report.html`, `tracker.json` and the suspicious-results list |
+| `test_report.py` | the comparison, `report.html`, `tracker.json` and the results worth a second look |
 | `test_redteam_import.py` | importing a red-team CSV |
-| `test_ui.py` | the control panel: access check, pages, model edits and roles, starting, stopping and resuming jobs, CSV upload |
+| `test_ui.py` | the control panel: access check, pages, model edits, keys and roles, plans with time estimates, starting, stopping and resuming jobs, the test list on a run page, Results and export, CSV upload |
 
 Parser tests run on saved harness outputs in `tests/fixtures/`. A few tests are skipped
 unless a harness environment is installed (retrieval, serving, AutomationBench). That is
@@ -350,7 +429,7 @@ expected.
 
 | Benchmark | Needs |
 |---|---|
-| GPQA, BFCL, TTFT probe | API access only |
+| App tasks, GPQA, BFCL, TTFT probe | API access only |
 | τ²-bench | API access for the model and the user-simulator model |
 | GAIA | Docker and web access |
 | Terminal-Bench, SWE-bench | Docker, about 4 CPU and 16 GB RAM per parallel task, tens of GB of images |
@@ -366,9 +445,14 @@ benchlab/cli.py                  the benchlab command
 benchlab/config.py               config validation
 benchlab/llm.py                  model access through LiteLLM: check, probes, budget
 benchlab/proxy.py                the LiteLLM proxy used by the harnesses
+benchlab/providers.py            the API providers a model can use
 benchlab/registry.py             benchmark keys, stages and suites
+benchlab/bench_about.py          what each benchmark measures, with links
+benchlab/planning.py             run plans with cost and time estimates
 benchlab/adapters/               one adapter per benchmark around its official harness
-benchlab/report.py               report.html and tracker.json
+benchlab/samples.py              per-test detail (pass/fail, prompts, answers) from raw output
+benchlab/report.py               the model comparison, report.html and tracker.json
+evals/                           your app tasks (*.yaml)
 benchlab/ui/                     the web control panel
 subsets/                         the fixed task subsets
 tests/                           the test suite

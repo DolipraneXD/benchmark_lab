@@ -185,7 +185,7 @@ def test_plan_blocks_pairs_whose_helper_has_no_key(client, monkeypatch):
 
 def test_plan(client):
     r = client.post("/run/plan", data={"models": ["mock"], "benches": ["ttft"], "smoke": "on"})
-    assert "Ready" in r.text and "mock" in r.text
+    assert "Ready" in r.text and "mock" in r.text and "Estimated time" in r.text
     r = client.post("/run/plan", data={"models": [], "benches": ["ttft"]})
     assert "pick at least one model" in r.text
 
@@ -374,3 +374,54 @@ def test_benchmarks_have_hover_descriptions(client):
     assert "198 graduate-level multiple-choice questions" in page
     plan = client.post("/run/plan", data={"models": ["mock"], "benches": ["ttft"], "smoke": "on"})
     assert "Time to first token" in plan.text
+
+
+def test_run_page_lists_each_test_with_prompts(client, models_yaml):
+    """A finished BFCL run (real Inspect dump from the mock) shows its tests, filters them
+    and opens each one on the prompt, the model's answer and the grader's reason."""
+    import shutil
+
+    from benchlab.runs import ErrorCounts, NormalizedResult, RunConfig, RunDir
+
+    rd = RunDir.create(models_yaml.parent / "runs", "mock", "bfcl")
+    rd.write_config(
+        RunConfig(
+            model_id="mock",
+            bench="bfcl",
+            model={},
+            request_params={},
+            per_model_exceptions={},
+            harness={},
+            subset={},
+            trials=1,
+            smoke=True,
+        )
+    )
+    shutil.copy("tests/fixtures/bfcl_smoke_mock.log_dump.json", rd.raw_dir / "log_dump.json")
+    rd.write_result(
+        NormalizedResult(
+            bench="bfcl",
+            model_id="mock",
+            metrics={"accuracy": 0.0},
+            primary_metric="accuracy",
+            n_tasks=3,
+            trials=1,
+            errors=ErrorCounts(),
+        )
+    )
+    page = client.get(f"/runs/{rd.name}").text
+    assert "Tests" in page and "Prompts, answers and grader notes" in page
+    assert "irrelevance_0" in page and "Calculate the area of a triangle" in page
+    assert "Incorrectly produced a function call for irrelevant query" in page  # grader reason
+    assert "determine_body_mass_index" in page  # the model's (wrong) tool call
+    r = client.post(f"/runs/{rd.name}/tests", data={"status": "pass", "q": "", "page": "1"})
+    assert "0 tests match" in r.text
+    r = client.post(f"/runs/{rd.name}/tests", data={"status": "all", "q": "triangle", "page": "1"})
+    assert "1 test matches" in r.text and "irrelevance_0" in r.text
+    assert (rd.path / "samples.json").exists()  # cached for the next view
+    results = client.get("/results").text  # the comparison counts the same tests
+    assert "0/3 passed" in results and f'href="/runs/{rd.name}"' in results
+    r = client.post("/report", follow_redirects=True)
+    assert "Exported report.html" in r.text
+    export = client.get("/report").text
+    assert "Failed tests" in export and "Calculate the area of a triangle" in export

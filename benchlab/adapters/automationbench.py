@@ -40,8 +40,8 @@ KEY_VAR = "BENCHLAB_PROXY_KEY"  # auto-bench reads the bearer token from the env
 
 
 class AutomationBenchAdapter(BenchAdapter):
-    key = "ds_auto"
-    tracker_key = "ds_auto"
+    key = "autobench"
+    tracker_key = "autobench"
     display = "AutomationBench (public set)"
     stage = 4
     needs_proxy = True

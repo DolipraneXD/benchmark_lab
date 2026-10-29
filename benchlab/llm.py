@@ -17,6 +17,7 @@ from typing import Any
 
 import litellm
 
+from benchlab import providers
 from benchlab.config import ModelSpec, Settings
 from benchlab.redact import redact
 from benchlab.usage import UsageLog, UsageRecord
@@ -34,29 +35,24 @@ logging.getLogger("LiteLLM").setLevel(
 # --------------------------------------------------------------------------- #
 def litellm_model_name(spec: ModelSpec) -> str:
     """LiteLLM routing string for a model (provider prefix + model name)."""
-    if spec.provider == "openai_compatible":
-        return f"openai/{spec.model}"
-    if spec.provider == "anthropic":
-        return f"anthropic/{spec.model}"
-    if spec.provider == "bedrock":
-        return spec.model if spec.model.startswith("bedrock/") else f"bedrock/{spec.model}"
-    raise ValueError(spec.provider)  # pragma: no cover
+    return providers.route(spec.provider, spec.model)
 
 
-def litellm_params(spec: ModelSpec, settings: Settings | None = None) -> dict[str, Any]:
-    """Provider/auth parameters (the ``litellm_params`` of a proxy entry, or
-    kwargs for ``litellm.completion``). The key value is read from the env at
-    call time and must never be persisted by callers."""
-    settings = settings or Settings()
+def endpoint_params(spec: ModelSpec, api_key: str | None) -> dict[str, Any]:
+    """Where and how to reach the model: base URL, key, API version, region. ``api_key``
+    is the key value (direct calls) or an ``os.environ/VAR`` reference (proxy config)."""
+    prov = providers.get(spec.provider)
     p: dict[str, Any] = {"model": litellm_model_name(spec)}
-    if spec.provider == "openai_compatible":
-        p["api_base"] = spec.base_url
-        p["api_key"] = spec.api_key(required=False) or "EMPTY"
-    elif spec.provider == "anthropic":
-        p["api_key"] = spec.api_key()
-        if spec.base_url:
-            p["api_base"] = spec.base_url
-    elif spec.provider == "bedrock":
+    base = spec.base_url or prov.default_base_url
+    if base:
+        p["api_base"] = base
+    if api_key:
+        p["api_key"] = api_key
+    elif spec.provider == "openai_compatible":
+        p["api_key"] = "EMPTY"  # most self-hosted servers want some token
+    if spec.api_version:
+        p["api_version"] = spec.api_version
+    if prov.needs_region:
         region = spec.region or os.environ.get("AWS_REGION_NAME") or os.environ.get("AWS_REGION")
         if region:
             p["aws_region_name"] = region
@@ -66,6 +62,15 @@ def litellm_params(spec: ModelSpec, settings: Settings | None = None) -> dict[st
         # explicit prices from models.yaml win over LiteLLM's built-in price map
         p["input_cost_per_token"] = spec.price_in_per_mtok / 1e6
         p["output_cost_per_token"] = spec.price_out_per_mtok / 1e6
+    return p
+
+
+def litellm_params(spec: ModelSpec, settings: Settings | None = None) -> dict[str, Any]:
+    """Provider/auth parameters (the ``litellm_params`` of a proxy entry, or
+    kwargs for ``litellm.completion``). The key value is read from the env at
+    call time and must never be persisted by callers."""
+    settings = settings or Settings()
+    p = endpoint_params(spec, spec.api_key())
     p["timeout"] = settings.request_timeout_s
     return p
 

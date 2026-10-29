@@ -1,12 +1,13 @@
 {% import "_ui.html" as ui %}
 {% if rows %}
 <div class="wrap"><table>
-  <tr><th>Model and benchmark</th><th class="num">Tasks</th><th class="num">Trials</th><th class="num">Estimated cost</th><th>Status</th></tr>
-  {% for m, b, adapter_cls, n, k, est, notes in rows %}
+  <tr><th>Model and benchmark</th><th class="num">Tasks</th><th class="num">Trials</th><th class="num">Estimated cost</th><th class="num">Estimated time</th><th>Status</th></tr>
+  {% for r in rows %}{% set m, b, adapter_cls, n, k, est, notes = r.model, r.bench, r.adapter_cls, r.n, r.trials, r.est_usd, r.notes %}
   <tr>
     <td><span class="name">{{ m.id }}</span> on {{ ui.bench(b.key) }}{% if b.needs_docker %}<span class="sub">needs Docker</span>{% endif %}</td>
     <td class="num">{{ n or '?' }}</td><td class="num">{{ k }}</td>
     <td class="num">{{ est|usd if est is not none else 'unknown price' }}</td>
+    <td class="num">{% if r.est_s %}{{ r.est_s|dur }}<span class="sub">{{ 'measured on its last run' if r.time_source == 'last run' else 'typical pace' }}</span>{% else %}<span class="quiet">-</span>{% endif %}</td>
     <td>
       {% if (m.id, b.key) in blocked %}<span class="lamp fault">Can't run: missing key</span>
         <span class="sub">{{ blocked[(m.id, b.key)] }} <a href="/models">Models → API keys / Roles</a></span>
@@ -19,12 +20,13 @@
   {% endfor %}
 </table></div>
 <dl class="figures">
-  <div><dt>Estimated total</dt><dd>{{ total|usd }}</dd></div>
+  <div><dt>Estimated cost</dt><dd>{{ total|usd }}</dd></div>
+  <div><dt>Estimated time</dt><dd>{{ total_s|dur if total_s else '-' }}</dd></div>
   {% if blocked %}<div><dt>Left out</dt><dd>{{ blocked|length }}</dd></div>{% endif %}
   {% if sel.budget is not none %}<div><dt>Budget per run</dt><dd>{{ sel.budget|usd }}</dd></div>{% endif %}
 </dl>
 {% if blocked %}<p class="notice warn">Start runs only the pairs marked Ready. The ones missing a key are left out until the key is saved.</p>{% endif %}
-<p class="quiet small">A rough estimate from typical tokens per task{{ ', not counting models with unknown prices' if unknown }}. The real cost comes from the usage logs.
+<p class="quiet small">Rough estimates. Cost comes from typical tokens per task{{ ', not counting models with unknown prices' if unknown }}; the real cost comes from the usage logs. Time adds up the pairs, which run one after another: {{ 'pairs this model ran before use its measured pace, the others' if measured else 'it uses' }} a typical pace for the benchmark spread over the model's parallel requests, plus about a minute of start-up each. The first run of a benchmark also installs its harness, which can take several minutes more.
 {% if sel.budget is not none and total > sel.budget %}<br><span class="tag warn">The estimate is above the budget, so a run may stop before it finishes. It can be resumed.</span>{% endif %}</p>
 {% else %}
 <p class="empty">None of these benchmarks apply to these models. Each model's suites and extra benchmarks in the config decide what it runs.</p>

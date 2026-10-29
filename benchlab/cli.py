@@ -15,7 +15,7 @@ from rich.table import Table
 from benchlab import __version__, registry
 from benchlab.config import BenchConfig, load_config
 from benchlab.llm import litellm_model_name, per_model_exceptions, request_params
-from benchlab.planning import plan_rows
+from benchlab.planning import fmt_duration, plan_rows
 from benchlab.redact import redact
 from benchlab.runs import RunConfig, RunDir
 from benchlab.usage import BudgetExceeded, BudgetGuard, UsageLog
@@ -252,31 +252,45 @@ def run(
         raise typer.Exit(1)
 
     t = Table(title="plan" + (" (dry run)" if dry_run else ""))
-    for c in ("model", "bench", "harness", "tasks", "trials", "est. cost", "docker", "status"):
+    for c in (
+        "model",
+        "bench",
+        "harness",
+        "tasks",
+        "trials",
+        "est. cost",
+        "est. time",
+        "docker",
+        "status",
+    ):
         t.add_column(c)
     total = 0.0
+    total_s = 0.0
     unknown = False
-    for m, b, adapter_cls, n, k, est, notes in rows:
-        if est is None:
+    for r in rows:
+        if r.est_usd is None:
             unknown = True
         else:
-            total += est
-        status = "ready" if adapter_cls else "[yellow]not integrated yet[/yellow]"
+            total += r.est_usd
+        total_s += r.est_s or 0
+        status = "ready" if r.adapter_cls else "[yellow]not integrated yet[/yellow]"
         t.add_row(
-            m.id,
-            b.key,
-            b.harness,
-            str(n or "?"),
-            str(k),
-            "-" if est is None else f"${est:.2f}",
-            "yes" if b.needs_docker else "",
-            status + ("; " + "; ".join(notes) if notes and adapter_cls else ""),
+            r.model.id,
+            r.bench.key,
+            r.bench.harness,
+            str(r.n or "?"),
+            str(r.trials),
+            "-" if r.est_usd is None else f"${r.est_usd:.2f}",
+            fmt_duration(r.est_s),
+            "yes" if r.bench.needs_docker else "",
+            status + ("; " + "; ".join(r.notes) if r.notes and r.adapter_cls else ""),
         )
     console.print(t)
     console.print(
         f"estimated total: ${total:.2f}"
         + (" (+ models with unknown prices)" if unknown else "")
-        + "  - rough, from per-task token profiles; real cost comes from the usage logs"
+        + f", about {fmt_duration(total_s)} (pairs run one after another)"
+        + "  - rough: cost from per-task token profiles, time from earlier runs or typical pace"
     )
     if budget_usd is not None and total > budget_usd:
         console.print(f"[yellow]estimate exceeds --budget-usd {budget_usd}[/yellow]")
@@ -284,7 +298,8 @@ def run(
         raise typer.Exit(0)
 
     rc = 0
-    for m, b, adapter_cls, _n, k, _est, _notes in rows:
+    for r in rows:
+        m, b, adapter_cls, k = r.model, r.bench, r.adapter_cls, r.trials
         if adapter_cls is None:
             console.print(
                 f"[yellow]skip[/yellow] {m.id} x {b.key}: adapter not integrated yet ({b.notes or b.harness})"
