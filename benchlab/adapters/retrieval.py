@@ -9,7 +9,7 @@ Verified against mteb 2.24.12: ``mteb.get_tasks``/``mteb.evaluate`` with a
 weights, and ``AbsTaskRetrieval.convert_to_reranking(predictions, top_k)`` to
 re-rank the embedding stage's top-k with the cross-encoder. BEIR is mteb's
 ``BEIR`` benchmark (same datasets/qrels, nDCG@10). The own-data set is a
-custom ``AbsTaskRetrieval`` built from ``retrieval/queries.jsonl`` +
+custom ``AbsTaskRetrieval`` built from ``data/retrieval/queries.jsonl`` +
 ``retrieval/docs/`` so it goes through exactly the same evaluator.
 """
 

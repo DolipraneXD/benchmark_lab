@@ -3,8 +3,8 @@
 Put your evaluation set here (both paths are git-ignored):
 
 ```
-retrieval/queries.jsonl   one JSON object per line: {"id": "q1", "query": "...", "relevant_doc_ids": ["doc-a", "doc-b"]}
-retrieval/docs/           one file per document (id = file name without extension),
+data/retrieval/queries.jsonl   one JSON object per line: {"id": "q1", "query": "...", "relevant_doc_ids": ["doc-a", "doc-b"]}
+data/retrieval/docs/           one file per document (id = file name without extension),
                           or a single docs.jsonl with {"id": "...", "text": "...", "title": "..."} per line
 ```
 

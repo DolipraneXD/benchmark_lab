@@ -17,7 +17,7 @@ from benchlab.runs import RunConfig, RunDir
 
 runner = CliRunner()
 FIXTURE = Path("tests/fixtures/guidellm_concurrent2_mock.json")
-VENV = Path("harnesses/serving/.venv/bin/guidellm")
+VENV = Path("workspace/harnesses/serving/.venv/bin/guidellm")
 
 
 def test_ttft_end_to_end_via_cli(models_yaml, tmp_path):
@@ -246,7 +246,7 @@ def test_serving_parse_vllm_and_warnings(models_yaml, tmp_path):
 @pytest.mark.skipif(not VENV.exists(), reason="serving harness venv not installed")
 def test_serving_end_to_end_guidellm(models_yaml, tmp_path, mock_server, monkeypatch):
     """Real guidellm 0.8.1 run against the mock (one level, 3 requests, fixed prompts)."""
-    monkeypatch.setenv("BENCHLAB_HARNESS_DIR", str(Path("harnesses").resolve()))
+    monkeypatch.setenv("BENCHLAB_HARNESS_DIR", str(Path("workspace/harnesses").resolve()))
     prompts = tmp_path / "prompts.jsonl"
     prompts.write_text("".join(json.dumps({"prompt": p}) + "\n" for p in PROMPTS[:3]))
     text = models_yaml.read_text().replace(

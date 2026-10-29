@@ -36,6 +36,7 @@ packages = ["benchlab"]
 
 [tool.ruff]
 line-length = 100
+cache-dir = "workspace/.ruff_cache"
 target-version = "py311"
 
 [tool.ruff.lint]
@@ -44,4 +45,5 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+cache_dir = "workspace/.pytest_cache"
 asyncio_mode = "auto"

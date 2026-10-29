@@ -2,7 +2,7 @@
 
 The file is round-tripped with ruamel.yaml (comments, key order, quoting kept).
 Every change is validated with BenchLab's own ``BenchConfig`` before it is written,
-a ``.bak`` copy of the previous file is kept, and the write is atomic.
+a copy of the previous file is kept in ``workspace/backups/``, and the write is atomic.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from pydantic import ValidationError
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
+from benchlab import paths
 from benchlab.config import BenchConfig
 
 # fields the form edits; anything else on a model (published, serving, tracker_id, ...) is kept
@@ -113,7 +114,9 @@ def _in_use(doc: Any, model_id: str, action: str) -> None:
 
 
 def _write(path: Path, text: str) -> None:
-    shutil.copy2(path, path.with_name(path.name + ".bak"))
+    backups = path.parent / paths.backups()
+    backups.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, backups / (path.name + ".bak"))
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=".yaml")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:

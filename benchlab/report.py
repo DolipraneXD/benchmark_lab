@@ -1,6 +1,6 @@
-"""Stage 8: ``benchlab report`` -> ``report.html`` + ``results/tracker.json``.
+"""Stage 8: ``benchlab report`` -> ``report.html`` + ``workspace/results/tracker.json``.
 
-Reads every finished run under ``runs/`` (the newest non-smoke run per
+Reads every finished run under ``workspace/runs/`` (the newest non-smoke run per
 (model, bench) wins; smoke runs are used only when nothing else exists and are
 flagged), merges the adapters' tracker entries, derives the aggregate keys the
 tracker expects (``cost``, ``srv_match``) and renders one

@@ -29,7 +29,7 @@ MTEB = "MTEB: the standard embedding benchmark; here its English retrieval and r
 GH = "https://github.com/"
 ABOUT: dict[str, tuple[str, str | None]] = {
     "apptasks": (
-        "App tasks: your own cases in evals/*.yaml, written for your product: instructions, "
+        "App tasks: your own cases in data/evals/*.yaml, written for your product: instructions, "
         "JSON extraction, classification, answers from your documents, tool calls, privacy "
         "and prompt-injection resistance. Each case has checks on the answer.",
         None,

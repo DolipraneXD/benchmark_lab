@@ -80,7 +80,7 @@ def test_subsets_fixed_and_reused(models_yaml, tmp_path, monkeypatch):
 def test_repo_subsets_match_registry_naming():
     """The committed subset files were drawn from the real registry with the same seed."""
     for name, pool in (("tb_terminal-bench_2.0_50", 89), ("swe_swebench-verified_1.0_50", 500)):
-        p = Path("subsets") / f"{name}.json"
+        p = Path("data/subsets") / f"{name}.json"
         assert p.exists(), p
         d = json.loads(p.read_text())
         assert (

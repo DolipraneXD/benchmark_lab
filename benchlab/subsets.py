@@ -8,7 +8,9 @@ import random
 from pathlib import Path
 from typing import Any
 
-SUBSETS_DIR = Path("subsets")
+from benchlab import paths
+
+SUBSETS_DIR = paths.DATA / "subsets"
 
 
 def subset_path(name: str, root: Path | None = None) -> Path:

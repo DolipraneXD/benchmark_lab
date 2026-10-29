@@ -20,7 +20,7 @@ from benchlab.adapters.retrieval import (
 from benchlab.config import load_config
 from benchlab.runs import RunConfig, RunDir
 
-VENV_PY = Path("harnesses/retrieval/.venv/bin/python")
+VENV_PY = Path("workspace/harnesses/retrieval/.venv/bin/python")
 
 
 def _cfg_with_reranker(models_yaml, tmp_path):

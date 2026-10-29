@@ -12,15 +12,15 @@
 # model (free-tier quota). Models xkiro bills (paid plan / top-up) carry their real
 # prices instead, e.g. minimax below. `--budget-usd 0.9` stops a run at ~0.9M tokens (under the
 # daily quota), and the report's cost column reads as Mtokens. Results go to
-# runs_xkiro/ and results_xkiro/ so they never mix with real runs.
+# workspace/runs_xkiro/ and workspace/results_xkiro/ so they never mix with real runs.
 
 settings:
   profile: lite
   baseline_model: minimax
   tau2_user_model: minimax
   tau2_user_model_params: {}
-  runs_dir: runs_xkiro
-  results_dir: results_xkiro
+  runs_dir: workspace/runs_xkiro
+  results_dir: workspace/results_xkiro
   default_temperature: 0.0
   default_max_tokens: 4096
   request_timeout_s: 300

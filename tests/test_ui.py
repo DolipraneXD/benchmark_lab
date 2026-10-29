@@ -88,7 +88,7 @@ def test_model_add_edit_delete_keeps_comments(client, models_yaml):
     text = models_yaml.read_text()
     assert text.startswith("# top comment kept") and "id: newm" in text
     assert "extra_params: {temperature: 0.2}" in text
-    assert (models_yaml.parent / "models.yaml.bak").exists()
+    assert (models_yaml.parent / "workspace" / "backups" / "models.yaml.bak").exists()
 
     r = client.post("/models/save", data={**form, "original_id": "newm", "name": "Renamed"})
     assert "Renamed" in models_yaml.read_text()

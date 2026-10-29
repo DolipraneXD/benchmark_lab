@@ -14,7 +14,7 @@ from benchlab.runs import RunConfig, RunDir
 
 runner = CliRunner()
 AB_FIXTURE = Path("tests/fixtures/automationbench_sales2_mock.json")
-AB_BIN = Path("harnesses/automationbench/repo/.venv/bin/auto-bench")
+AB_BIN = Path("workspace/harnesses/automationbench/repo/.venv/bin/auto-bench")
 
 
 def _rd(cfg, tmp_path, model_id, bench, harness, smoke=False):
@@ -108,7 +108,7 @@ def test_autobench_parse_fixture(models_yaml, tmp_path):
 @pytest.mark.skipif(not AB_BIN.exists(), reason="AutomationBench harness not installed")
 def test_autobench_end_to_end_via_proxy(models_yaml, tmp_path, monkeypatch):
     """Real auto-bench (pinned commit) -> BenchLab proxy -> mock, 3 sales tasks."""
-    monkeypatch.setenv("BENCHLAB_HARNESS_DIR", str(Path("harnesses").resolve()))
+    monkeypatch.setenv("BENCHLAB_HARNESS_DIR", str(Path("workspace/harnesses").resolve()))
     r = runner.invoke(
         app, ["run", "-m", "mock", "--bench", "autobench", "--smoke", "-c", str(models_yaml)]
     )

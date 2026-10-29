@@ -184,7 +184,7 @@ class Settings(BaseModel):
             "CQADupstackRetrieval",
         ]
     )  # `--subset all` = mteb's full BEIR benchmark (adds NQ, HotpotQA, FEVER, ClimateFEVER, DBPedia, Quora, MSMARCO)
-    own_retrieval_dir: str = "retrieval"  # retrieval/queries.jsonl + retrieval/docs/
+    own_retrieval_dir: str = "data/retrieval"  # queries.jsonl + docs/
     # serving benchmark (guidellm against the self-hosted endpoint) and the TTFT probe
     serving_tool: str = (
         "guidellm"  # guidellm | vllm  (vllm = `vllm bench serve`, needs vllm installed)
@@ -198,7 +198,7 @@ class Settings(BaseModel):
     )
     ttft_prompts: int = 10  # fixed prompt set size for the TTFT probe (all models)
     ttft_repeats: int = 3  # streamed repeats per prompt
-    apptasks_dir: str = "evals"  # app tasks: your own cases, evals/*.yaml
+    apptasks_dir: str = "data/evals"  # app tasks: your own cases, *.yaml
     # AutomationBench (opt-in extra: add `autobench` to a model's extras)
     autobench_ref: str = (
         "4a8e1061254004d9dac807054eed33fad7d1ff14"  # zapier/AutomationBench (v1.0.6)
@@ -216,8 +216,8 @@ class Settings(BaseModel):
     suspicious_error_rate: float = (
         0.05  # (timeouts + API errors + malformed tool calls) / tasks above this -> flagged
     )
-    runs_dir: str = "runs"
-    results_dir: str = "results"
+    runs_dir: str = "workspace/runs"
+    results_dir: str = "workspace/results"
 
     @model_validator(mode="after")
     def _apply_profile(self) -> Settings:

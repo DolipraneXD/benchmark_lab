@@ -97,10 +97,11 @@ def build_proxy_config(
 
 def write_proxy_config(
     cfg: BenchConfig,
-    path: str | Path = "litellm_config.yaml",
+    path: str | Path = "workspace/litellm_config.yaml",
     aliases: dict[str, str] | None = None,
 ) -> Path:
     p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
     data = build_proxy_config(cfg, aliases=aliases)
     text = yaml.safe_dump(data, sort_keys=False)
     assert "sk-" not in text.replace("os.environ/", "")  # belt and braces

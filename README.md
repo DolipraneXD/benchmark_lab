@@ -33,9 +33,9 @@ benchlab models --keys           # validate models.yaml and show which keys are 
 The rest of this README assumes the venv is active. Without activating it, put
 `.venv/bin/` in front of the command (`.venv/bin/benchlab ...`) or use `uv run benchlab ...`.
 
-Each official harness gets its own environment under `harnesses/<name>/.venv`. It is
+Each official harness gets its own environment under `workspace/harnesses/<name>/.venv`. It is
 created the first time that benchmark runs, with exact versions recorded in
-`harnesses/<name>/manifest.json` and in every run's `config.json`.
+`workspace/harnesses/<name>/manifest.json` and in every run's `config.json`.
 
 ## Models (`models.yaml`)
 
@@ -135,8 +135,8 @@ panel, change roles under **Models → Roles**.
 
 A trial config for models reached through xkiro.com, to try the pipeline cheaply. It
 starts with only `minimax`, which shares `BENCHLAB_KEY_MINIMAX` with `models.yaml`; add
-other models from the panel. It writes to `runs_xkiro/` and
-`results_xkiro/`, so trial numbers never mix with real ones. Pass `-c models.xkiro.yaml`
+other models from the panel. It writes to `workspace/runs_xkiro/` and
+`workspace/results_xkiro/`, so trial numbers never mix with real ones. Pass `-c models.xkiro.yaml`
 to any command, or switch config in the panel header. A reseller can't prove it serves the
 official weights, so use these runs to test the setup, not to decide.
 
@@ -150,7 +150,7 @@ benchlab run --model minimax --stage 1 --budget-usd 10      # the real run, stop
 benchlab run --model minimax --bench gpqa,bfcl              # specific benchmarks
 benchlab runs                                           # list runs and their status
 benchlab usage                                          # tokens, cost, latency and error rates
-benchlab report                                         # build report.html and results/tracker.json
+benchlab report                                         # build workspace/results/report.html and tracker.json
 ```
 
 Options for `benchlab run`:
@@ -173,7 +173,7 @@ Options for `benchlab run`:
 continue where it stopped.
 
 **Where results go.** Each run gets its own folder,
-`runs/<timestamp>_<model>_<bench>/`, with these files:
+`workspace/runs/<timestamp>_<model>_<bench>/`, with these files:
 - `config.json`: the exact settings and harness versions
 - `state.json`: the finished tasks, used to resume
 - `usage.jsonl`: one line per request
@@ -181,11 +181,11 @@ continue where it stopped.
 - `result.json`: the scores
 - `samples.json`: every test with pass/fail, the prompts and the answer (built on first view)
 
-Every result is also added to `results/results.csv`. `benchlab report` compares all
+Every result is also added to `workspace/results/results.csv`. `benchlab report` compares all
 finished runs in one self-contained `report.html`. It has the same layout as the panel's
 Results page, plus the first failed tests of each model with their prompts and answers. It
-also writes `results/tracker.json` and lists results worth a second look in
-`results/suspicious.json`.
+also writes `tracker.json` and lists results worth a second look in `suspicious.json`, all
+in `workspace/results/`.
 
 **Estimated time.** The plan estimates each pair's time. If the model has run that
 benchmark before, it uses its measured pace; otherwise it uses a typical pace for the
@@ -209,7 +209,7 @@ caught early.
 
 | Key | Benchmark | Stage |
 |---|---|---|
-| `apptasks` | App tasks: your own cases in `evals/` (see below) | 1 |
+| `apptasks` | App tasks: your own cases in `data/evals/` (see below) | 1 |
 | `gpqa` | GPQA Diamond | 1 |
 | `bfcl` | BFCL (tool calling) | 1 |
 | `ttft` | time to first token probe | 1 |
@@ -230,7 +230,7 @@ Hover a benchmark's name in the panel to see what it measures and a link to its 
 ### App tasks (`apptasks`): your own cases
 
 The public benchmarks say how capable a model is in general. App tasks say how it does on
-**your** prompts. Cases live in `evals/*.yaml`. Each one has a system prompt and a user
+**your** prompts. Cases live in `data/evals/*.yaml`. Each one has a system prompt and a user
 prompt (or a conversation), optional documents and tools, and checks on the answer. A case
 passes when every check passes.
 
@@ -255,7 +255,7 @@ passes when every check passes.
 docs. With `--trials 3`, each case runs three times and the result also reports how many
 cases passed every time (`consistent_cases`).
 
-The starter file `evals/app_tasks.yaml` has 23 cases for an AI app builder:
+The starter file `data/evals/app_tasks.yaml` has 23 cases for an AI app builder:
 - following instructions and answering in French
 - JSON extraction and ticket classification
 - answering only from documents, and saying so when the answer isn't there
@@ -349,8 +349,8 @@ changing its code.
 A run started from the panel is the exact `benchlab run ...` command shown on its job page.
 It writes the same folders a terminal run would. The panel won't start a model and
 benchmark pair that is already running. Model edits are checked before saving; comments in
-the YAML are kept, and the previous file is saved as `models.yaml.bak`. Job records and
-logs are in `runs/.jobs/`.
+the YAML are kept, and the previous file is saved in `workspace/backups/`. Job records
+and logs are in `workspace/runs/.jobs/`.
 
 ### API keys in the panel
 
@@ -439,8 +439,30 @@ expected.
 
 ## Project layout
 
+The root holds the configs and four folders:
+
 ```
 models.yaml, models.xkiro.yaml   the two configs
+benchlab/                        the code, including the web panel (benchlab/ui/)
+data/                            inputs kept in git
+  evals/                         your app tasks (*.yaml)
+  subsets/                       the fixed task subsets, so every model gets the same tasks
+  retrieval/                     your own documents for the retrieval benchmark (not in git)
+tests/                           the test suite
+docs/                            design notes
+workspace/                       everything BenchLab makes on this machine (not in git):
+  runs/, runs_xkiro/             one folder per run
+  results/, results_xkiro/       results.csv, report.html, tracker.json
+  harnesses/                     the installed official benchmark tools (a few GB)
+  backups/                       the previous version of each config the panel saved
+```
+
+Set `BENCHLAB_WORKSPACE` to keep `workspace/` somewhere else, for example on a bigger disk.
+`.venv/` (the Python environment) also sits in the root, hidden.
+
+Inside `benchlab/`:
+
+```
 benchlab/cli.py                  the benchlab command
 benchlab/config.py               config validation
 benchlab/llm.py                  model access through LiteLLM: check, probes, budget
@@ -452,8 +474,6 @@ benchlab/planning.py             run plans with cost and time estimates
 benchlab/adapters/               one adapter per benchmark around its official harness
 benchlab/samples.py              per-test detail (pass/fail, prompts, answers) from raw output
 benchlab/report.py               the model comparison, report.html and tracker.json
-evals/                           your app tasks (*.yaml)
 benchlab/ui/                     the web control panel
-subsets/                         the fixed task subsets
-tests/                           the test suite
+benchlab/paths.py                where data/ and workspace/ are
 ```

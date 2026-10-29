@@ -1,4 +1,4 @@
-"""Run folders: ``runs/<timestamp>_<model>_<bench>/`` with config.json,
+"""Run folders: ``workspace/runs/<timestamp>_<model>_<bench>/`` with config.json,
 state.json (resume), result.json and the raw harness output."""
 
 from __future__ import annotations

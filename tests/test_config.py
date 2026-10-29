@@ -105,7 +105,7 @@ def test_shipped_registries():
         assert cfg.get(cfg.settings.baseline_model) in cfg.chat_models()
         assert all(m not in cfg.chat_models() for m in cfg.models if m.reference)
     x = load_config(root / "models.xkiro.yaml", dotenv=False)
-    assert x.settings.runs_dir == "runs_xkiro"  # trial runs never mix with real ones
+    assert x.settings.runs_dir == "workspace/runs_xkiro"  # trial runs never mix with real ones
 
 
 def test_reference_model_is_never_run_or_proxied(tmp_path):

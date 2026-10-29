@@ -10,22 +10,15 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-.pytest_cache/
-.ruff_cache/
 
-# benchlab outputs: runs, results and reports never go to git
-runs*/
-results*/
+# everything BenchLab makes on this machine: runs, results and reports, installed
+# harnesses, config backups, tool caches (see benchlab/paths.py)
+workspace/
+
+# your own retrieval documents stay local
+data/retrieval/docs/
+data/retrieval/queries.jsonl
+
+# reports written somewhere else by hand
 report*.html
 *-results.html
-litellm_config.yaml
-
-# vendored harnesses (cloned by `benchlab prepare`)
-harnesses/
-
-# retrieval data is user-supplied
-retrieval/docs/
-retrieval/queries.jsonl
-
-# benchlab ui backups of edited model registries
-*.yaml.bak

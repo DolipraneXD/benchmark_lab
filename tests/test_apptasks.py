@@ -80,7 +80,7 @@ def test_documents_go_into_the_system_prompt():
 
 
 def test_shipped_starter_cases_are_valid():
-    cases = load_cases(Path("evals"))
+    cases = load_cases(Path("data/evals"))
     assert len(cases) >= 20 and len({c["category"] for c in cases}) >= 8
     for c in cases:
         assert set(c["checks"]) <= CHECKS

@@ -16,7 +16,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_ROOT = Path(os.environ.get("BENCHLAB_HARNESS_DIR", "harnesses"))
+from benchlab import paths
 
 
 class HarnessInstallError(RuntimeError):
@@ -24,8 +24,8 @@ class HarnessInstallError(RuntimeError):
 
 
 def harness_root(name: str, root: Path | None = None) -> Path:
-    # BENCHLAB_HARNESS_DIR is read at call time so tests can point it at a temp dir
-    return (root or Path(os.environ.get("BENCHLAB_HARNESS_DIR", "harnesses"))) / name
+    # read at call time so tests can point it at a temp dir
+    return (root or paths.harnesses()) / name
 
 
 def _uv() -> str:
@@ -131,7 +131,7 @@ def run_python(
 
 
 def describe() -> str:  # pragma: no cover - convenience
-    return f"harness envs under {DEFAULT_ROOT.resolve()} (python {sys.version_info.major}.{sys.version_info.minor} host)"
+    return f"harness envs under {paths.harnesses().resolve()} (python {sys.version_info.major}.{sys.version_info.minor} host)"
 
 
 def ensure_repo_env(

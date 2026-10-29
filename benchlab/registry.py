@@ -197,11 +197,11 @@ _reg(
         1,
         ("core", "coder"),
         "apptasks",
-        "benchlab (evals/*.yaml)",
+        "benchlab (data/evals/*.yaml)",
         adapter="benchlab.adapters.apptasks:AppTasksAdapter",
         tokens_in_per_task=1500,
         tokens_out_per_task=400,
-        notes="your prompts, documents and tools with checks; edit evals/*.yaml",
+        notes="your prompts, documents and tools with checks; edit data/evals/*.yaml",
     )
 )
 

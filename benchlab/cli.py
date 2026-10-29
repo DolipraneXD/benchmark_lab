@@ -183,7 +183,7 @@ def check(
 @app.command("proxy-config")
 def proxy_config(
     config: str | None = ConfigOpt,
-    out: str = typer.Option("litellm_config.yaml", help="output path"),
+    out: str = typer.Option("workspace/litellm_config.yaml", help="output path"),
 ) -> None:
     """Write the LiteLLM proxy config (model ids -> providers, prices, usage callback)."""
     from benchlab.proxy import proxy_base_url, write_proxy_config
@@ -197,7 +197,7 @@ def proxy_config(
 @app.command()
 def proxy(
     config: str | None = ConfigOpt,
-    out: str = typer.Option("litellm_config.yaml", help="config path to (re)generate"),
+    out: str = typer.Option("workspace/litellm_config.yaml", help="config path to (re)generate"),
 ) -> None:
     """Regenerate the proxy config and run the LiteLLM proxy in the foreground."""
     from benchlab.proxy import launch_proxy, proxy_base_url, write_proxy_config
@@ -234,7 +234,7 @@ def run(
     resume: bool = typer.Option(True, help="continue the newest unfinished run for (model, bench)"),
     config: str | None = ConfigOpt,
 ) -> None:
-    """Run benchmarks. Every run writes runs/<timestamp>_<model>_<bench>/."""
+    """Run benchmarks. Every run writes workspace/runs/<timestamp>_<model>_<bench>/."""
     cfg = _cfg(config)
     try:
         specs = cfg.select(model)
@@ -519,15 +519,18 @@ def usage(
 @app.command()
 def report(
     config: str | None = ConfigOpt,
-    out: str = typer.Option("report.html", "--out", "-o", help="where to write the HTML report"),
+    out: str | None = typer.Option(
+        None, "--out", "-o", help="where to write the HTML report (default: <results_dir>/report.html)"
+    ),
     include_smoke: bool = typer.Option(
         True, "--include-smoke/--no-smoke", help="use smoke runs when nothing else exists (flagged)"
     ),
 ) -> None:
-    """Generate report.html and results/tracker.json from all finished runs (build order step 8)."""
+    """Compare all finished runs in report.html and write tracker.json (in workspace/results/)."""
     from benchlab.report import build_report
 
     cfg = _cfg(config)
+    out = out or str(Path(cfg.settings.results_dir) / "report.html")
     rep = build_report(cfg, out, include_smoke=include_smoke)
     col = rep.collected
     if not col.entries:

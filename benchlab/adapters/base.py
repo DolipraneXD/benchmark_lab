@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from benchlab import paths
 from benchlab.config import BenchConfig, ModelSpec
 from benchlab.runs import NormalizedResult, RunDir
 from benchlab.usage import BudgetGuard
@@ -52,7 +53,7 @@ class BenchAdapter(ABC):
 
     def __init__(self, cfg: BenchConfig, harness_root: Path | None = None):
         self.cfg = cfg
-        self.harness_root = Path(harness_root or "harnesses") / self.key
+        self.harness_root = Path(harness_root or paths.harnesses()) / self.key
 
     @abstractmethod
     def prepare(self) -> dict[str, Any]:
