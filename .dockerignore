@@ -1,0 +1,6 @@
+# only pyproject.toml, README.md and benchlab/ go into the images
+*
+!pyproject.toml
+!README.md
+!benchlab/
+benchlab/**/__pycache__

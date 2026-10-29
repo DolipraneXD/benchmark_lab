@@ -33,6 +33,7 @@ import yaml
 
 from benchlab.adapters.base import BenchAdapter, HarnessNotReady, RunPlan
 from benchlab.config import MissingKeyError, ModelSpec
+from benchlab.harness_env import building_image
 from benchlab.llm import LLMClient
 from benchlab.redact import redact
 from benchlab.runs import ErrorCounts, NormalizedResult, RunDir
@@ -206,6 +207,8 @@ class AppTasksAdapter(BenchAdapter):
         return cases[:SMOKE_CASES] if smoke else cases
 
     def prepare(self) -> dict[str, Any]:
+        if building_image():  # nothing to install; the cases are mounted at run time
+            return {"name": "benchlab-apptasks"}
         try:
             cases = self.cases()
         except (ValueError, yaml.YAMLError) as e:
@@ -256,7 +259,7 @@ class AppTasksAdapter(BenchAdapter):
         except MissingKeyError as e:
             raise HarnessNotReady(str(e)) from e
         cases = self.cases(smoke)
-        client = LLMClient(self.cfg.settings, usage_log=run_dir.usage_log, num_retries=1)
+        client = LLMClient(self.cfg.settings, usage_log=run_dir.usage_log)
         grader = self.grader(model)
         done = run_dir.completed_ids()
         out = run_dir.raw_dir / CASES_FILE

@@ -90,7 +90,7 @@ class TTFTAdapter(BenchAdapter):
             raise HarnessNotReady(str(e)) from e
         prompts = self.prompts(smoke)
         reps = 1 if smoke else self.cfg.settings.ttft_repeats
-        client = LLMClient(self.cfg.settings, usage_log=run_dir.usage_log, num_retries=0)
+        client = LLMClient(self.cfg.settings, usage_log=run_dir.usage_log)
         done = run_dir.completed_ids()
         rows: list[dict[str, Any]] = []
         raw = run_dir.raw_dir

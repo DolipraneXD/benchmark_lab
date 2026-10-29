@@ -30,7 +30,13 @@ from typing import Any
 
 from benchlab.adapters.base import BenchAdapter, HarnessNotReady, RunPlan
 from benchlab.config import ModelSpec
-from benchlab.harness_env import HarnessInstallError, ensure_venv, frozen_versions, run_python
+from benchlab.harness_env import (
+    HarnessInstallError,
+    building_image,
+    ensure_venv,
+    frozen_versions,
+    run_python,
+)
 from benchlab.llm import request_params
 from benchlab.proxy import ProxyProcess
 from benchlab.redact import redact
@@ -176,9 +182,9 @@ class InspectAdapter(BenchAdapter):
     def prepare(self) -> dict[str, Any]:
         # cheap checks first so the message names the real blocker, then the venv
         for var in self.env_required:
-            if not os.environ.get(var):
+            if not os.environ.get(var) and not building_image():
                 raise HarnessNotReady(f"{self.key}: env var {var} is required (put it in .env)")
-        if self.needs_docker and not docker_available():
+        if self.needs_docker and not docker_available() and not building_image():
             raise HarnessNotReady(
                 f"{self.key}: Docker daemon not reachable (needed for the sandbox)"
             )

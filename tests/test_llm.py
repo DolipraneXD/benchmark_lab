@@ -110,3 +110,35 @@ def test_sent_request_shape(models_yaml, mock_server):
     sent = mock_server.app.state.requests[-1]
     assert sent["tools"][0]["function"]["name"] == "get_weather" and sent["tool_choice"] == "auto"
     assert json.dumps(sent).count("sk-") == 0
+
+
+def test_transient_failures_are_retried_and_permanent_ones_are_not(models_yaml, monkeypatch):
+    import litellm
+
+    from benchlab.config import load_config
+    from benchlab.llm import LLMClient
+    from benchlab.usage import UsageLog
+
+    cfg = load_config(models_yaml)  # request_retries: 1, tiny backoff
+    calls = []
+
+    def fail(exc):
+        def _completion(**kw):
+            calls.append(1)
+            raise exc
+
+        return _completion
+
+    log = UsageLog(models_yaml.parent / "u.jsonl")
+    client = LLMClient(cfg.settings, usage_log=log, retries=3)
+    rate = litellm.RateLimitError("Too many requests at once", llm_provider="openai", model="m")
+    monkeypatch.setattr(litellm, "completion", fail(rate))
+    res = client.complete(cfg.get("mock"), [{"role": "user", "content": "hi"}])
+    assert res.status == "rate_limit" and len(calls) == 4  # 1 try + 3 retries
+    assert list(log.records())[-1]["tags"] == {"retries": 3}  # one record per call, not per attempt
+
+    calls.clear()
+    auth = litellm.AuthenticationError("bad key", llm_provider="openai", model="m")
+    monkeypatch.setattr(litellm, "completion", fail(auth))
+    res = client.complete(cfg.get("mock"), [{"role": "user", "content": "hi"}])
+    assert res.status == "auth" and len(calls) == 1  # never retried

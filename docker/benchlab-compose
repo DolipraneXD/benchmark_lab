@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+# docker compose for BenchLab, with the project folder and your user filled in.
+#   docker/benchlab-compose --profile build build   build every image
+#   docker/benchlab-compose up -d                   start the panel (http://127.0.0.1:8765)
+#   docker/benchlab-compose logs panel              the link with the session key
+#   docker/benchlab-compose down                    stop it (runs already started keep going)
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+BENCHLAB_ROOT=$(cd "$here/.." && pwd)
+BENCHLAB_UID=$(id -u)
+BENCHLAB_GID=$(id -g)
+export BENCHLAB_ROOT BENCHLAB_UID BENCHLAB_GID
+mkdir -p "$BENCHLAB_ROOT/workspace"
+exec docker compose -f "$here/compose.yaml" "$@"

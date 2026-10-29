@@ -24,7 +24,7 @@ from typing import Any
 from benchlab.adapters._proc import run_logged
 from benchlab.adapters.base import BenchAdapter, HarnessNotReady, RunPlan
 from benchlab.config import ModelSpec
-from benchlab.harness_env import HarnessInstallError, ensure_repo, repo_commit
+from benchlab.harness_env import HarnessInstallError, building_image, ensure_repo, repo_commit
 from benchlab.llm import request_params
 from benchlab.proxy import ProxyProcess
 from benchlab.redact import redact
@@ -110,13 +110,13 @@ class AiderAdapter(BenchAdapter):
             raise HarnessNotReady(f"{self.key}: docker build failed: {redact(out.stderr[-2000:])}")
 
     def prepare(self) -> dict[str, Any]:
-        if not docker_available():
+        if not docker_available() and not building_image():
             raise HarnessNotReady(
                 f"{self.key}: Docker daemon not reachable (the aider benchmark executes model-written code in a container)"
             )
         aider, polyglot = self.repos()
-        if not self.image_exists():
-            self.build_image(aider)
+        if not building_image() and not self.image_exists():
+            self.build_image(aider)  # inside containers this image is built ahead by compose
         return {
             "name": "aider-benchmark",
             "repo": AIDER_REPO,
@@ -174,16 +174,25 @@ class AiderAdapter(BenchAdapter):
     def docker_command(
         self, aider_repo: Path, benchmarks_dir: Path, inner: str, interactive_env: dict[str, str]
     ) -> list[str]:
+        # inside a run container: join the run's Docker network (the proxy is reachable by
+        # the run container's name) and use the code baked into the image, since the
+        # harness folder is not a host path
+        in_container = bool(os.environ.get("BENCHLAB_ADVERTISE_HOST"))
+        network = (
+            os.environ.get("BENCHLAB_DOCKER_NETWORK") or self.cfg.settings.aider_docker_network
+        )
         cmd = [
             "docker",
             "run",
             "--rm",
             "--memory=12g",
             "--memory-swap=12g",
-            f"--network={self.cfg.settings.aider_docker_network}",
+            f"--network={network if in_container else self.cfg.settings.aider_docker_network}",
             "--add-host=host.docker.internal:host-gateway",
-            "-v",
-            f"{aider_repo}:/aider",
+        ]
+        if not in_container:
+            cmd += ["-v", f"{aider_repo}:/aider"]
+        cmd += [
             "-v",
             f"{benchmarks_dir}:/benchmarks",
             "-e",

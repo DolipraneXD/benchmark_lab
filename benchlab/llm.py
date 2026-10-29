@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -168,6 +169,24 @@ def classify_exception(e: BaseException) -> tuple[str, str]:
     return "error", name
 
 
+# server-side hiccups worth another try; a wrong answer or a bad key never is
+TRANSIENT_ERRORS = {
+    "InternalServerError",
+    "ServiceUnavailableError",
+    "APIConnectionError",
+    "BadGatewayError",
+    "APIError",
+}
+
+
+def transient(res: CallResult) -> bool:
+    if res.ok:
+        return False
+    if res.status in ("rate_limit", "timeout"):
+        return True
+    return res.status == "error" and res.error_type in TRANSIENT_ERRORS
+
+
 def _parse_tool_calls(message: Any) -> list[ToolCall]:
     out: list[ToolCall] = []
     for tc in getattr(message, "tool_calls", None) or []:
@@ -237,11 +256,13 @@ class LLMClient:
         self,
         settings: Settings | None = None,
         usage_log: UsageLog | None = None,
-        num_retries: int = 2,
+        num_retries: int = 0,
+        retries: int | None = None,
     ):
         self.settings = settings or Settings()
         self.usage_log = usage_log
-        self.num_retries = num_retries
+        self.num_retries = num_retries  # LiteLLM's own retries; BenchLab's loop does the rest
+        self.retries = self.settings.request_retries if retries is None else retries
         self._sems: dict[str, asyncio.Semaphore] = {}
 
     # -- kwargs -----------------------------------------------------------
@@ -291,23 +312,32 @@ class LLMClient:
         """One chat completion. ``stream=True`` also measures time-to-first-token."""
         kw = self.build_kwargs(spec, messages, tools, tool_choice, stream, **overrides)
         ctype = call_type or ("tool" if tools else ("stream" if stream else "chat"))
-        t0 = time.perf_counter()
-        try:
-            if not stream:
-                resp = litellm.completion(**kw)
-                res = _finish(spec, resp, time.perf_counter() - t0, None)
-            else:
-                chunks, ttft = [], None
-                for chunk in litellm.completion(**kw):
-                    if ttft is None and _chunk_has_token(chunk):
-                        ttft = time.perf_counter() - t0
-                    chunks.append(chunk)
-                resp = litellm.stream_chunk_builder(chunks, messages=messages)
-                res = _finish(spec, resp, time.perf_counter() - t0, ttft)
-        except Exception as e:  # noqa: BLE001 - we classify and record everything
-            res = _fail(e, time.perf_counter() - t0)
-        self._log(spec, res, ctype, tags or {})
+        for attempt in range(self.retries + 1):
+            t0 = time.perf_counter()
+            try:
+                if not stream:
+                    resp = litellm.completion(**kw)
+                    res = _finish(spec, resp, time.perf_counter() - t0, None)
+                else:
+                    chunks, ttft = [], None
+                    for chunk in litellm.completion(**kw):
+                        if ttft is None and _chunk_has_token(chunk):
+                            ttft = time.perf_counter() - t0
+                        chunks.append(chunk)
+                    resp = litellm.stream_chunk_builder(chunks, messages=messages)
+                    res = _finish(spec, resp, time.perf_counter() - t0, ttft)
+            except Exception as e:  # noqa: BLE001 - we classify and record everything
+                res = _fail(e, time.perf_counter() - t0)
+            if not transient(res) or attempt == self.retries:
+                break
+            time.sleep(self._backoff(attempt))
+        self._log(spec, res, ctype, {**(tags or {}), **({"retries": attempt} if attempt else {})})
         return res
+
+    def _backoff(self, attempt: int) -> float:
+        """2, 4, 8, 16 s … (capped at 60) plus jitter, so parallel requests don't retry in step."""
+        base = self.settings.retry_backoff_s * (2**attempt)
+        return min(60.0, base) * (0.75 + random.random() * 0.5)
 
     # -- async ------------------------------------------------------------
     def _sem(self, spec: ModelSpec) -> asyncio.Semaphore:
@@ -329,23 +359,28 @@ class LLMClient:
         """Async variant, bounded by the model's ``max_concurrency``."""
         kw = self.build_kwargs(spec, messages, tools, tool_choice, stream, **overrides)
         ctype = call_type or ("tool" if tools else ("stream" if stream else "chat"))
+        # the slot is kept while backing off: a rate-limited endpoint gets fewer requests
         async with self._sem(spec):
-            t0 = time.perf_counter()
-            try:
-                if not stream:
-                    resp = await litellm.acompletion(**kw)
-                    res = _finish(spec, resp, time.perf_counter() - t0, None)
-                else:
-                    chunks, ttft = [], None
-                    async for chunk in await litellm.acompletion(**kw):
-                        if ttft is None and _chunk_has_token(chunk):
-                            ttft = time.perf_counter() - t0
-                        chunks.append(chunk)
-                    resp = litellm.stream_chunk_builder(chunks, messages=messages)
-                    res = _finish(spec, resp, time.perf_counter() - t0, ttft)
-            except Exception as e:  # noqa: BLE001
-                res = _fail(e, time.perf_counter() - t0)
-        self._log(spec, res, ctype, tags or {})
+            for attempt in range(self.retries + 1):
+                t0 = time.perf_counter()
+                try:
+                    if not stream:
+                        resp = await litellm.acompletion(**kw)
+                        res = _finish(spec, resp, time.perf_counter() - t0, None)
+                    else:
+                        chunks, ttft = [], None
+                        async for chunk in await litellm.acompletion(**kw):
+                            if ttft is None and _chunk_has_token(chunk):
+                                ttft = time.perf_counter() - t0
+                            chunks.append(chunk)
+                        resp = litellm.stream_chunk_builder(chunks, messages=messages)
+                        res = _finish(spec, resp, time.perf_counter() - t0, ttft)
+                except Exception as e:  # noqa: BLE001
+                    res = _fail(e, time.perf_counter() - t0)
+                if not transient(res) or attempt == self.retries:
+                    break
+                await asyncio.sleep(self._backoff(attempt))
+        self._log(spec, res, ctype, {**(tags or {}), **({"retries": attempt} if attempt else {})})
         return res
 
 

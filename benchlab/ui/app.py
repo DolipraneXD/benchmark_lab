@@ -26,7 +26,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from benchlab import __version__, registry, samples
+from benchlab import __version__, containers, registry, samples
 from benchlab.config import BenchConfig, load_config
 from benchlab.redact import redact
 from benchlab.runs import RunDir
@@ -46,13 +46,19 @@ def discover_configs(root: Path) -> list[str]:
     return sorted(p.name for p in root.glob("models*.yaml"))
 
 
-def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> FastAPI:
+def create_app(
+    token: str, root: str | Path | None = None, port: int = 8765, hosts: tuple[str, ...] = ()
+) -> FastAPI:
     root = Path(root or Path.cwd()).resolve()
     app = FastAPI(title="BenchLab", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     tpl = Jinja2Templates(directory=HERE / "templates")
     render.install(tpl.env)
+    # Host header allowlist: this machine, plus the names it is opened at when it runs in a
+    # container or on a server (``--allow-host``); stops DNS-rebinding pages
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+    for h in hosts:
+        allowed_hosts |= {h} if ":" in h else {h, f"{h}:{port}"}
     last_checks: dict[tuple[str, str], dict[str, Any]] = {}
     env_path = root / ".env"
     env_store.lock(env_path)  # keys live here: owner-only, like an ssh key
@@ -493,31 +499,48 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
         msg = "Started." + (f" Left out for a missing key: {left}." if left else "")
         return back(f"/jobs/{job.id}", msg=msg)
 
-    def _start_job(cfg: BenchConfig, request: Request, sel: dict[str, Any], pairs) -> J.Job:
+    def _run_args(request: Request, sel: dict[str, Any], models, benches) -> list[str]:
+        args = ["run", "-c", str(cfg_path(request).resolve()), "-m", ",".join(models)]
+        args += ["-b", ",".join(benches)]
+        if sel["trials"] is not None:
+            args += ["--trials", str(sel["trials"])]
+        if sel["subset"]:
+            args += ["--subset", sel["subset"]]
+        if sel["smoke"]:
+            args += ["--smoke"]
+        if sel["budget"] is not None:
+            args += ["--budget-usd", str(sel["budget"])]
+        return args
+
+    def _start_job(
+        cfg: BenchConfig, request: Request, sel: dict[str, Any], pairs, extra=None
+    ) -> J.Job:
         models = sorted({m for m, _ in pairs})
         benches = sorted({b for _, b in pairs})
-        argv = [
-            sys.executable,
-            "-m",
-            "benchlab.cli",
-            "run",
-            "-c",
-            str(cfg_path(request)),
-            "-m",
-            ",".join(models),
-            "-b",
-            ",".join(benches),
-        ]
-        if sel["trials"] is not None:
-            argv += ["--trials", str(sel["trials"])]
-        if sel["subset"]:
-            argv += ["--subset", sel["subset"]]
-        if sel["smoke"]:
-            argv += ["--smoke"]
-        if sel["budget"] is not None:
-            argv += ["--budget-usd", str(sel["budget"])]
+        # the same command a terminal would run; shown on the job page
+        argv = [sys.executable, "-m", "benchlab.cli", *_run_args(request, sel, models, benches)]
+        job_id = J.new_id()
+        steps: list[list[str]] = []
+        names: list[str] = []
+        mode = containers.executor(cfg)
+        if mode == "docker":  # one container per benchmark family, run one after another
+            for i, (family, ms, bs) in enumerate(containers.split_by_family(pairs)):
+                name = containers.container_name(job_id, i)
+                names.append(name)
+                steps.append(
+                    containers.run_argv(
+                        cfg,
+                        name=name,
+                        family=family,
+                        cli_args=_run_args(request, sel, ms, bs),
+                        root=root,
+                        env_names=containers.key_vars(cfg, ms, bs),
+                        needs_docker=containers.needs_docker(bs),
+                        user=containers.host_user(),
+                    )
+                )
         job = J.Job(
-            id=J.new_id(),
+            id=job_id,
             argv=argv,
             config=cfg_name(request),
             pairs=pairs,
@@ -526,7 +549,10 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
             smoke=sel["smoke"],
             label=f"{','.join(models)} × {','.join(benches)}"
             + (" (smoke)" if sel["smoke"] else ""),
-            extra={"selection": sel},
+            extra={"selection": sel, **(extra or {})},
+            executor=mode,
+            steps=steps,
+            containers=names,
         )
         return J.start(runs_dir(cfg), job, cwd=root)
 
@@ -596,18 +622,22 @@ def create_app(token: str, root: str | Path | None = None, port: int = 8765) -> 
         clash = {tuple(p) for p in old.pairs} & J.running_pairs(rd)
         if clash:
             return back(f"/jobs/{job_id}", err="another job is running these pairs")
-        job = J.Job(
-            id=J.new_id(),
-            argv=old.argv,
-            config=old.config,
-            pairs=old.pairs,
-            started_at=time.time(),
-            budget_usd=old.budget_usd,
-            smoke=old.smoke,
-            label=old.label,
-            extra={**old.extra, "resumes": old.id},
-        )
-        J.start(rd, job, cwd=root)
+        sel = old.extra.get("selection")
+        if sel and old.config == cfg_name(request):  # rebuilt: new container names, same run
+            job = _start_job(cfg, request, sel, old.pairs, extra={"resumes": old.id})
+        else:
+            job = J.Job(
+                id=J.new_id(),
+                argv=old.argv,
+                config=old.config,
+                pairs=old.pairs,
+                started_at=time.time(),
+                budget_usd=old.budget_usd,
+                smoke=old.smoke,
+                label=old.label,
+                extra={**old.extra, "resumes": old.id},
+            )
+            J.start(rd, job, cwd=root)
         return back(f"/jobs/{job.id}", msg=f"resumed from job {old.id}")
 
     # ---- runs / results ----------------------------------------------------------------
@@ -969,15 +999,40 @@ def _parse_model_form(form: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def serve(port: int = 8765, open_browser: bool = True) -> None:  # pragma: no cover - CLI entry
+def serve(
+    port: int = 8765,
+    open_browser: bool = True,
+    host: str = "127.0.0.1",
+    hosts: tuple[str, ...] = (),
+) -> None:  # pragma: no cover - CLI entry
     import secrets
-    import webbrowser
 
     import uvicorn
 
-    token = secrets.token_urlsafe(18)
+    # BENCHLAB_UI_TOKEN keeps the link stable across restarts (a container, a server)
+    token = os.environ.get("BENCHLAB_UI_TOKEN") or secrets.token_urlsafe(18)
     url = f"http://127.0.0.1:{port}/?token={token}"
-    print(f"BenchLab control panel: {url}\n(local only; this link is your session key)", flush=True)
+    print(f"BenchLab control panel: {url}\n(this link is your session key)", flush=True)
     if open_browser:
+        _open_quietly(url)
+    uvicorn.run(
+        create_app(token, port=port, hosts=hosts), host=host, port=port, log_level="warning"
+    )
+
+
+def _open_quietly(url: str) -> None:  # pragma: no cover - desktop only
+    """Open the browser without its own start-up chatter (Chromium's "zygote" lines)."""
+    import shutil
+    import subprocess
+    import webbrowser
+
+    opener = shutil.which("xdg-open") if sys.platform.startswith("linux") else None
+    if opener:
+        subprocess.Popen(
+            [opener, url],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    else:
         webbrowser.open(url)
-    uvicorn.run(create_app(token, port=port), host="127.0.0.1", port=port, log_level="warning")

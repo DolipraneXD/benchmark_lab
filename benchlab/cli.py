@@ -520,7 +520,10 @@ def usage(
 def report(
     config: str | None = ConfigOpt,
     out: str | None = typer.Option(
-        None, "--out", "-o", help="where to write the HTML report (default: <results_dir>/report.html)"
+        None,
+        "--out",
+        "-o",
+        help="where to write the HTML report (default: <results_dir>/report.html)",
     ),
     include_smoke: bool = typer.Option(
         True, "--include-smoke/--no-smoke", help="use smoke runs when nothing else exists (flagged)"
@@ -556,14 +559,76 @@ def report(
 
 
 @app.command()
-def ui(
-    port: int = typer.Option(8765, help="local port (the panel only listens on 127.0.0.1)"),
-    no_browser: bool = typer.Option(False, "--no-browser", help="don't open the browser"),
+def prepare(
+    family: str = typer.Option(
+        "",
+        "--family",
+        help="install the harnesses of one image family (core, code, retrieval, serving)",
+    ),
+    bench: str = typer.Option("", "--bench", "-b", help="comma list of benchmark keys"),
+    config: str | None = ConfigOpt,
 ) -> None:
-    """Open the local web control panel (models, runs, live progress, results, import)."""
+    """Install and check benchmark harnesses ahead of a run (used when building images)."""
+    from benchlab.adapters.base import HarnessNotReady
+    from benchlab.config import BenchConfig
+
+    if family:
+        benches = [b for b in registry.BENCHES.values() if b.family == family]
+    elif bench:
+        benches = registry.select_benches(bench)
+    else:
+        err.print("give --family or --bench")
+        raise typer.Exit(2)
+    if config or Path("models.yaml").exists():
+        cfg = _cfg(config)
+    else:  # building an image: no models.yaml, the pinned defaults are all that matter
+        cfg = BenchConfig.model_validate(
+            {
+                "settings": {"baseline_model": "x", "tau2_user_model": "x"},
+                "models": [
+                    {
+                        "id": "x",
+                        "name": "x",
+                        "provider": "openai_compatible",
+                        "base_url": "http://x/v1",
+                        "model": "x",
+                    }
+                ],
+            }
+        )
+    failed = 0
+    seen: set[str] = set()
+    for b in benches:
+        cls = registry.load_adapter(b)
+        if cls is None or cls.__name__ in seen:  # imported benches; shared harnesses once
+            continue
+        seen.add(cls.__name__)
+        t0 = time.time()
+        try:
+            cls(cfg).prepare()
+            console.print(f"[green]ready[/green] {b.key} ({time.time() - t0:.0f}s)")
+        except HarnessNotReady as e:
+            failed += 1
+            err.print(f"[red]not ready[/red] {b.key}: {redact(e)}")
+    raise typer.Exit(1 if failed else 0)
+
+
+@app.command()
+def ui(
+    port: int = typer.Option(8765, help="port to listen on"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="don't open the browser"),
+    host: str = typer.Option(
+        "127.0.0.1", help="address to listen on; 0.0.0.0 only inside a container or behind a proxy"
+    ),
+    allow_host: list[str] = typer.Option(  # noqa: B008
+        [], "--allow-host", help="extra host name the panel is opened at (repeatable)"
+    ),
+) -> None:
+    """Open the web control panel (models, runs, live progress, results, import)."""
     from benchlab.ui.app import serve
 
-    serve(port=port, open_browser=not no_browser)
+    extra = [h.strip() for h in os.environ.get("BENCHLAB_UI_HOSTS", "").split(",") if h.strip()]
+    serve(port=port, open_browser=not no_browser, host=host, hosts=tuple(allow_host + extra))
 
 
 def main() -> None:  # pragma: no cover

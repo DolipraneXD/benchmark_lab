@@ -42,6 +42,9 @@ class Job:
     smoke: bool = False
     label: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
+    executor: str = "local"  # local | docker
+    steps: list[list[str]] = field(default_factory=list)  # docker: one `docker run` per family
+    containers: list[str] = field(default_factory=list)  # their container names
 
 
 def jobs_dir(runs_dir: str | Path) -> Path:
@@ -130,17 +133,38 @@ def status(runs_dir: str | Path, job: Job) -> str:
         return EXIT_MEANING.get(rc, f"exit {rc}")
     if job.pid and _alive(job.pid):
         return "running"
+    if job.containers and _container_running(job.containers):
+        return "running"  # the panel restarted, but the run's container is still going
     return "lost"  # killed without the launcher writing an exit code (reboot, kill -9)
+
+
+def _docker(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=20)
+
+
+def _container_running(names: list[str]) -> bool:
+    try:
+        out = _docker("ps", "-q", *[a for n in names for a in ("--filter", f"name=^{n}$")])
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return bool(out.stdout.strip())
 
 
 def stop(runs_dir: str | Path, job: Job) -> bool:
     if status(runs_dir, job) != "running":
         return False
+    sent = False
     try:
-        os.killpg(job.pid, signal.SIGINT)
+        os.killpg(job.pid, signal.SIGINT)  # `docker run` passes it on to its container
+        sent = True
     except ProcessLookupError:
-        return False
-    return True
+        pass
+    for name in job.containers:  # and directly, in case the launcher is gone
+        try:
+            sent = _docker("kill", "--signal=SIGINT", name).returncode == 0 or sent
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return sent
 
 
 def log_tail(runs_dir: str | Path, job: Job, max_bytes: int = 20000) -> str:

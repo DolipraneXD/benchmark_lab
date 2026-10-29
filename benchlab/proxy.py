@@ -144,7 +144,11 @@ class ProxyProcess:
         self.work_dir = Path(work_dir)
         self.usage_log = Path(usage_log)
         self.port = port or _free_port()
-        self.host = cfg.settings.litellm_proxy_host
+        # in a run container, other containers (Aider's) must reach the proxy: listen on all
+        # interfaces and advertise the container's name on the Docker network
+        advertise = os.environ.get("BENCHLAB_ADVERTISE_HOST")
+        self.bind = "0.0.0.0" if advertise else cfg.settings.litellm_proxy_host
+        self.host = advertise or cfg.settings.litellm_proxy_host
         self.proc: subprocess.Popen | None = None
         self.log_path = self.work_dir / "proxy.log"
         self.master_key = os.environ.get("LITELLM_MASTER_KEY") or "sk-benchlab-local"
@@ -173,7 +177,7 @@ class ProxyProcess:
         env["LITELLM_MASTER_KEY"] = self.master_key
         env.setdefault("LITELLM_LOG", "ERROR")
         self.proc = subprocess.Popen(
-            [exe, "--config", str(cfg_path), "--host", self.host, "--port", str(self.port)],
+            [exe, "--config", str(cfg_path), "--host", self.bind, "--port", str(self.port)],
             stdout=open(self.log_path, "ab"),
             stderr=subprocess.STDOUT,
             env=env,

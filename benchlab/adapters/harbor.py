@@ -32,7 +32,13 @@ import httpx
 from benchlab.adapters._proc import run_logged
 from benchlab.adapters.base import BenchAdapter, HarnessNotReady, RunPlan
 from benchlab.config import ModelSpec
-from benchlab.harness_env import HarnessInstallError, ensure_venv, frozen_versions, harness_root
+from benchlab.harness_env import (
+    HarnessInstallError,
+    building_image,
+    ensure_venv,
+    frozen_versions,
+    harness_root,
+)
 from benchlab.llm import request_params
 from benchlab.proxy import ProxyProcess
 from benchlab.redact import redact
@@ -143,7 +149,7 @@ class HarborAdapter(BenchAdapter):
         return [t["name"] for t in self.dataset_entry().get("tasks", [])]
 
     def prepare(self) -> dict[str, Any]:
-        if not docker_available():
+        if not docker_available() and not building_image():
             raise HarnessNotReady(
                 f"{self.key}: Docker daemon not reachable (harbor runs every task in a container)"
             )

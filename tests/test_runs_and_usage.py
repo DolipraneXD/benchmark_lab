@@ -128,3 +128,16 @@ def test_proxy_config_has_no_secrets(models_yaml, tmp_path):
     txt = p.read_text()
     assert MOCK_KEY not in txt and "sk-ant" not in txt
     assert json.dumps(data)  # serialisable
+
+
+def test_uv_is_found_in_benchlabs_own_environment(monkeypatch):
+    """Harness installs must not depend on the venv being on PATH (terminal runs)."""
+    import sys
+    from pathlib import Path
+
+    from benchlab import harness_env
+
+    monkeypatch.setenv("PATH", "/nonexistent")
+    own = Path(sys.executable).parent / "uv"
+    if own.exists():
+        assert harness_env._uv() == str(own)

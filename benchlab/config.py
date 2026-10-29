@@ -11,7 +11,7 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from benchlab import providers
+from benchlab import paths, providers
 from benchlab.redact import register_secret_env
 
 Kind = Literal["chat", "embedding", "reranker"]
@@ -122,6 +122,9 @@ class Settings(BaseModel):
     default_temperature: float | None = 0.0
     default_max_tokens: int = 4096
     request_timeout_s: float = 300
+    # rate limits, 5xx and dropped connections are retried with growing waits (2, 4, 8, 16 s)
+    request_retries: int = 4
+    retry_backoff_s: float = 2.0
     tau2_user_model: str = "claude"
     tau2_user_model_params: dict[str, Any] = Field(default_factory=dict)
     grader_model: str | None = None  # LLM grader for model-graded benches (default: baseline)
@@ -216,8 +219,23 @@ class Settings(BaseModel):
     suspicious_error_rate: float = (
         0.05  # (timeouts + API errors + malformed tool calls) / tasks above this -> flagged
     )
-    runs_dir: str = "workspace/runs"
-    results_dir: str = "workspace/results"
+    # how the panel starts runs: local = a subprocess here; docker = one container per run
+    # (BENCHLAB_EXECUTOR overrides it, which is what docker/compose.yaml does)
+    executor: Literal["local", "docker"] = "local"
+    docker_network: str = "benchlab"
+    docker_image_prefix: str = "benchlab"
+    docker_image_tag: str = "latest"
+    container_limits: dict[str, dict[str, Any]] = Field(
+        default_factory=lambda: {
+            "core": {"cpus": 2, "memory": "4g"},
+            "code": {"cpus": 4, "memory": "8g"},
+            "retrieval": {"cpus": 4, "memory": "8g"},
+            "serving": {"cpus": 2, "memory": "4g"},
+        }
+    )
+    # under the workspace (BENCHLAB_WORKSPACE moves it, e.g. inside a run container)
+    runs_dir: str = Field(default_factory=lambda: str(paths.workspace() / "runs"))
+    results_dir: str = Field(default_factory=lambda: str(paths.workspace() / "results"))
 
     @model_validator(mode="after")
     def _apply_profile(self) -> Settings:

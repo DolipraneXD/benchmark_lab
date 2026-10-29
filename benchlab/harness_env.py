@@ -28,10 +28,20 @@ def harness_root(name: str, root: Path | None = None) -> Path:
     return (root or paths.harnesses()) / name
 
 
+def building_image() -> bool:
+    """True while a Docker image is being built (BENCHLAB_IMAGE_BUILD=1): harnesses are
+    installed, but checks that only make sense at run time (Docker daemon, API keys,
+    Aider's task image) are skipped."""
+    return os.environ.get("BENCHLAB_IMAGE_BUILD") == "1"
+
+
 def _uv() -> str:
-    exe = shutil.which("uv")
+    # BenchLab's own environment ships uv (a dependency); prefer it, so harnesses
+    # install the same way whether or not that environment is on PATH
+    own = Path(sys.executable).parent / "uv"
+    exe = str(own) if own.exists() else shutil.which("uv")
     if not exe:
-        raise HarnessInstallError("`uv` is required to create harness environments")
+        raise HarnessInstallError("`uv` is required to create harness environments: pip install uv")
     return exe
 
 

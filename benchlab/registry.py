@@ -29,6 +29,7 @@ class BenchInfo:
     notes: str = ""
     aliases: tuple[str, ...] = field(default_factory=tuple)
     trials_default: int = 1  # used when --trials is not given (τ²: 3 for pass^k)
+    family: str = "core"  # which container image runs it: core | code | retrieval | serving
 
 
 BENCHES: dict[str, BenchInfo] = {}
@@ -219,6 +220,7 @@ _reg(
         tokens_in_per_task=60000,
         tokens_out_per_task=3000,
         notes="public 600-task set (not the held-out leaderboard set); add autobench to a model's extras to run it",
+        family="code",
     )
 )
 
@@ -248,6 +250,7 @@ _reg(
         adapter="benchlab.adapters.livecodebench:LCBAdapter",
         tokens_in_per_task=1500,
         tokens_out_per_task=2500,
+        family="code",
     )
 )
 _reg(
@@ -263,6 +266,7 @@ _reg(
         n_tasks_default=225,
         tokens_in_per_task=8000,
         tokens_out_per_task=2000,
+        family="code",
     )
 )
 
@@ -277,6 +281,7 @@ _reg(
         "mteb",
         adapter="benchlab.adapters.retrieval:MTEBRetrievalAdapter",
         n_tasks_default=10,
+        family="retrieval",
     )
 )
 _reg(
@@ -289,6 +294,7 @@ _reg(
         "mteb",
         adapter="benchlab.adapters.retrieval:MTEBRerankingAdapter",
         n_tasks_default=3,
+        family="retrieval",
     )
 )
 _reg(
@@ -302,6 +308,7 @@ _reg(
         adapter="benchlab.adapters.retrieval:BEIRAdapter",
         n_tasks_default=8,
         aliases=("beir_rr",),
+        family="retrieval",
     )
 )
 _reg(
@@ -315,6 +322,7 @@ _reg(
         adapter="benchlab.adapters.retrieval:OwnDataAdapter",
         n_tasks_default=1,
         aliases=("own_rec", "own_rec_rr", "own_ndcg", "own_ndcg_rr"),
+        family="retrieval",
     )
 )
 _reg(
@@ -338,6 +346,7 @@ _reg(
             "srv_c32",
         ),
         notes="srv_match (self-hosted vs API score gap) is computed by `benchlab report`",
+        family="serving",
     )
 )
 

@@ -105,7 +105,7 @@ def run_check(
         rep.problems.append(str(e))
         return rep
 
-    client = LLMClient(cfg.settings, usage_log=usage_log, num_retries=0)
+    client = LLMClient(cfg.settings, usage_log=usage_log, retries=1)
     tags = {"check": True}
 
     rep.chat = client.complete(

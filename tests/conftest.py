@@ -202,6 +202,8 @@ settings:
   runs_dir: {tmp_path / "runs"}
   results_dir: {tmp_path / "results"}
   request_timeout_s: 20
+  request_retries: 1
+  retry_backoff_s: 0.01
 models:
   - id: claude
     name: Claude Sonnet 5.5

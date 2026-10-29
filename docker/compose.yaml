@@ -1,0 +1,107 @@
+# BenchLab in containers: the panel, two Docker socket proxies, and the image builds.
+# Start it with docker/benchlab-compose (it sets the variables below), e.g.
+#   docker/benchlab-compose --profile build build     # build every image (first time: long)
+#   docker/benchlab-compose up -d                     # start the panel
+#   docker/benchlab-compose logs panel                # the link with the session key
+#
+# BENCHLAB_ROOT  the project folder. It is mounted at the same path in the panel and in
+#                every run container (path parity), so paths a harness hands to Docker
+#                are valid on the host.
+# BENCHLAB_UID / BENCHLAB_GID  the host user that owns the files the panel and runs write.
+name: benchlab
+
+x-build: &build
+  context: ..
+  dockerfile: docker/Dockerfile
+
+services:
+  panel:
+    image: benchlab-core:${BENCHLAB_TAG:-latest}
+    build: { <<: *build, target: core }
+    command: ["benchlab", "ui", "--host", "0.0.0.0", "--no-browser"]
+    working_dir: ${BENCHLAB_ROOT:?run docker/benchlab-compose}
+    user: "${BENCHLAB_UID:-1000}:${BENCHLAB_GID:-1000}"
+    env_file:
+      - path: ../.env
+        required: false
+    environment:
+      BENCHLAB_EXECUTOR: docker
+      BENCHLAB_WORKSPACE: ${BENCHLAB_ROOT}/workspace
+      BENCHLAB_RUN_USER: "${BENCHLAB_UID:-1000}:${BENCHLAB_GID:-1000}"
+      BENCHLAB_UI_TOKEN: ${BENCHLAB_UI_TOKEN:-}
+      BENCHLAB_UI_HOSTS: ${BENCHLAB_UI_HOSTS:-}
+      DOCKER_HOST: tcp://benchlab-docker-panel:2375
+      HOME: /tmp
+    volumes:
+      - ${BENCHLAB_ROOT}:${BENCHLAB_ROOT}
+    ports:
+      - "127.0.0.1:${BENCHLAB_PORT:-8765}:8765"
+    networks: [benchlab]
+    depends_on: [docker-panel, docker-runs]
+    restart: unless-stopped
+
+  # The panel's door to Docker: create, start, signal, inspect and remove run containers.
+  docker-panel:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: benchlab-docker-panel
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      IMAGES: 1
+      INFO: 1
+      NETWORKS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [benchlab]
+    restart: unless-stopped
+
+  # For the benchmarks that start their own containers (Terminal-Bench and SWE-bench via
+  # Harbor's compose, the GAIA / BrowseComp sandbox, Aider's exercises). Other run
+  # containers get no DOCKER_HOST at all. This is the one way a run can act on the
+  # host's Docker; see docs/superpowers/specs/2026-10-29-benchlab-docker-runs-design.md.
+  docker-runs:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    container_name: benchlab-docker-runs
+    environment:
+      CONTAINERS: 1
+      POST: 1
+      ALLOW_START: 1
+      ALLOW_STOP: 1
+      ALLOW_RESTARTS: 1
+      EXEC: 1
+      IMAGES: 1
+      NETWORKS: 1
+      VOLUMES: 1
+      BUILD: 1
+      INFO: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [benchlab]
+    restart: unless-stopped
+
+  # Images built but never started by compose: runs use them (`--profile build build`).
+  code:
+    image: benchlab-code:${BENCHLAB_TAG:-latest}
+    build: { <<: *build, target: code }
+    profiles: [build]
+  retrieval:
+    image: benchlab-retrieval:${BENCHLAB_TAG:-latest}
+    build: { <<: *build, target: retrieval }
+    profiles: [build]
+  serving:
+    image: benchlab-serving:${BENCHLAB_TAG:-latest}
+    build: { <<: *build, target: serving }
+    profiles: [build]
+  # Aider's own benchmark image (its exercises run in it), from its pinned tag
+  aider-task:
+    image: benchlab-aider:${BENCHLAB_AIDER_REF:-v0.86.2}
+    build:
+      context: https://github.com/Aider-AI/aider.git#${BENCHLAB_AIDER_REF:-v0.86.2}
+      dockerfile: benchmark/Dockerfile
+    profiles: [build]
+
+networks:
+  benchlab:
+    name: benchlab
