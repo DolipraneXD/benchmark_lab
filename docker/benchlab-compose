@@ -9,6 +9,11 @@ here=$(cd "$(dirname "$0")" && pwd)
 BENCHLAB_ROOT=$(cd "$here/.." && pwd)
 BENCHLAB_UID=$(id -u)
 BENCHLAB_GID=$(id -g)
-export BENCHLAB_ROOT BENCHLAB_UID BENCHLAB_GID
+# BenchLab uses the native Docker Engine (context `default`) unless told otherwise, even
+# when the shell's current context is Docker Desktop (whose VM can run out of memory)
+BENCHLAB_DOCKER_CONTEXT=${BENCHLAB_DOCKER_CONTEXT:-default}
+[ -n "${DOCKER_HOST:-}" ] || DOCKER_CONTEXT=$BENCHLAB_DOCKER_CONTEXT
+export BENCHLAB_ROOT BENCHLAB_UID BENCHLAB_GID BENCHLAB_DOCKER_CONTEXT
+[ -z "${DOCKER_CONTEXT:-}" ] || export DOCKER_CONTEXT
 mkdir -p "$BENCHLAB_ROOT/workspace"
 exec docker compose -f "$here/compose.yaml" "$@"

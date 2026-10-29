@@ -95,6 +95,20 @@ def get(key: str) -> Provider:
         raise ValueError(f"unknown provider {key!r}; known: {', '.join(PROVIDERS)}") from None
 
 
+# paths people paste from API docs; LiteLLM adds them itself, so a Base URL ending in one
+# sends requests to …/chat/completions/chat/completions (404)
+ENDPOINT_PATHS = ("/chat/completions", "/completions", "/responses", "/embeddings", "/messages")
+
+
+def clean_base_url(url: str) -> tuple[str, str | None]:
+    """(url without an endpoint path or trailing slash, the path removed or None)."""
+    u = url.strip().rstrip("/")
+    for path in ENDPOINT_PATHS:
+        if u.lower().endswith(path):
+            return u[: -len(path)].rstrip("/"), path
+    return u, None
+
+
 def route(provider: str, model: str) -> str:
     """LiteLLM model string, e.g. ``mistral/mistral-large-latest``. A model that already
     carries the prefix is left alone."""

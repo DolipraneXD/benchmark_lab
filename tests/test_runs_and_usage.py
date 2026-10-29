@@ -141,3 +141,6 @@ def test_uv_is_found_in_benchlabs_own_environment(monkeypatch):
     own = Path(sys.executable).parent / "uv"
     if own.exists():
         assert harness_env._uv() == str(own)
+    lite = Path(sys.executable).parent / "litellm"  # the proxy CLI, same rule
+    if lite.exists():
+        assert harness_env.own_tool("litellm") == str(lite)

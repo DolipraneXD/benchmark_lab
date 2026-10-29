@@ -120,3 +120,45 @@ def test_launcher_runs_steps_and_stops_at_first_stop(tmp_path):
     launcher.main(str(job))
     assert job.with_suffix(".exit").read_text() == "130"  # stopped: later families don't start
     assert "after" not in Path(job.with_suffix(".log")).read_text()
+
+
+def test_stop_reaches_a_later_step(tmp_path):
+    """The launcher ignores SIGINT; the commands it starts must not inherit that, or a
+    Stop would never reach a job's second container."""
+    import os
+    import signal
+    import subprocess
+    import time
+
+    py = sys.executable
+    waiter = (
+        "import signal, sys, time\n"
+        "signal.signal(signal.SIGINT, lambda *a: (print('got it', flush=True), sys.exit(130)))\n"
+        "print('waiting', flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    job = tmp_path / "j.json"
+    job.write_text(
+        json.dumps({"argv": [], "steps": [[py, "-c", "print('first')"], [py, "-c", waiter]]})
+    )
+    p = subprocess.Popen([py, "-m", "benchlab.ui.launcher", str(job)], start_new_session=True)
+    log = job.with_suffix(".log")
+    for _ in range(100):  # until the second step is running
+        if log.exists() and "waiting" in log.read_text():
+            break
+        time.sleep(0.1)
+    os.killpg(p.pid, signal.SIGINT)  # what the panel's Stop does
+    p.wait(timeout=20)
+    assert "got it" in log.read_text()
+    assert job.with_suffix(".exit").read_text() == "130"
+    assert signal.getsignal(signal.SIGINT) is not signal.SIG_IGN  # pytest itself untouched
+
+
+def test_docker_env_picks_benchlabs_engine_only_when_asked():
+    assert "DOCKER_CONTEXT" not in containers.docker_env({"PATH": "/bin"})
+    env = containers.docker_env({"BENCHLAB_DOCKER_CONTEXT": "default"})
+    assert env["DOCKER_CONTEXT"] == "default"
+    env = containers.docker_env(
+        {"BENCHLAB_DOCKER_CONTEXT": "default", "DOCKER_HOST": "tcp://p:2375"}
+    )
+    assert "DOCKER_CONTEXT" not in env  # an explicit DOCKER_HOST (the socket proxy) wins

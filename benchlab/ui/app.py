@@ -28,6 +28,7 @@ from fastapi.templating import Jinja2Templates
 
 from benchlab import __version__, containers, registry, samples
 from benchlab.config import BenchConfig, load_config
+from benchlab.providers import clean_base_url
 from benchlab.redact import redact
 from benchlab.runs import RunDir
 from benchlab.ui import env_store, models_store, render
@@ -303,6 +304,9 @@ def create_app(
             old_var = next((m.api_key_env for m in cfg.models if m.id == original), None)
         try:
             data = _parse_model_form(form)
+            trimmed = None
+            if data.get("base_url"):
+                data["base_url"], trimmed = clean_base_url(data["base_url"])
             if mode == "own":
                 var = env_store.key_name(cfg_name(request), data["id"])
             elif mode == "none":
@@ -326,6 +330,11 @@ def create_app(
         if old_var != var:
             drop_unused_own_key(request, old_var)
         msg = f"Saved {data['id']} in {cfg_name(request)}."
+        if trimmed:
+            msg += (
+                f" The Base URL ended in {trimmed}, which is added to every request "
+                f"automatically, so it was removed: {data['base_url']}."
+            )
         if var and not os.environ.get(var):
             msg += f" It has no key yet: paste one on its Edit page or under API keys ({var})."
         return back("/models", msg=msg)

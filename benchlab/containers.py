@@ -28,6 +28,17 @@ ALWAYS_ENV = ("LITELLM_MASTER_KEY",)
 AWS_ENV = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION_NAME")
 
 
+def docker_env(env: dict[str, str] | None = None) -> dict[str, str]:
+    """Environment for Docker commands BenchLab runs on the host. BENCHLAB_DOCKER_CONTEXT
+    picks the engine for BenchLab only (e.g. `default`, the native engine, when the
+    shell's current context is Docker Desktop); an explicit DOCKER_HOST wins."""
+    env = dict(os.environ if env is None else env)
+    ctx = env.get("BENCHLAB_DOCKER_CONTEXT")
+    if ctx and not env.get("DOCKER_HOST"):
+        env["DOCKER_CONTEXT"] = ctx
+    return env
+
+
 def executor(cfg: BenchConfig) -> str:
     return os.environ.get("BENCHLAB_EXECUTOR") or cfg.settings.executor
 

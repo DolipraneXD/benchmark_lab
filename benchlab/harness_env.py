@@ -35,11 +35,15 @@ def building_image() -> bool:
     return os.environ.get("BENCHLAB_IMAGE_BUILD") == "1"
 
 
+def own_tool(name: str) -> str | None:
+    """A command BenchLab ships as a dependency (uv, litellm): the copy next to the Python
+    running BenchLab first, so terminal runs work whether or not its venv is on PATH."""
+    own = Path(sys.executable).parent / name
+    return str(own) if own.exists() else shutil.which(name)
+
+
 def _uv() -> str:
-    # BenchLab's own environment ships uv (a dependency); prefer it, so harnesses
-    # install the same way whether or not that environment is on PATH
-    own = Path(sys.executable).parent / "uv"
-    exe = str(own) if own.exists() else shutil.which("uv")
+    exe = own_tool("uv")
     if not exe:
         raise HarnessInstallError("`uv` is required to create harness environments: pip install uv")
     return exe

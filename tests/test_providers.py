@@ -50,3 +50,14 @@ def test_config_refuses_incomplete_models():
     with pytest.raises(ValidationError, match="mistral needs an API key"):
         ModelSpec(id="m", name="M", provider="mistral", model="x")
     ModelSpec(id="m", name="M", provider="ollama", model="x")  # local: no key, no URL needed
+
+
+def test_clean_base_url_removes_endpoint_paths():
+    from benchlab.providers import clean_base_url
+
+    assert clean_base_url("https://llmhub.leyton.com/v1/chat/completions") == (
+        "https://llmhub.leyton.com/v1",
+        "/chat/completions",
+    )
+    assert clean_base_url("https://api.example.com/v1/") == ("https://api.example.com/v1", None)
+    assert clean_base_url("http://h:8000/v1/completions")[0] == "http://h:8000/v1"

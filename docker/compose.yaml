@@ -100,6 +100,9 @@ services:
     build:
       context: https://github.com/Aider-AI/aider.git#${BENCHLAB_AIDER_REF:-v0.86.2}
       dockerfile: benchmark/Dockerfile
+      args:
+        # Aider's install reads its version from git: keep .git in the build context
+        BUILDKIT_CONTEXT_KEEP_GIT_DIR: "1"
     profiles: [build]
 
 networks:

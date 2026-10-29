@@ -43,3 +43,11 @@ models:
     price_in_per_mtok: 0.15
     price_out_per_mtok: 0.6
     max_concurrency: 4
+  - id: mistrallarge4
+    name: mistral-large-4
+    provider: openai_compatible
+    base_url: https://llmhub.leyton.com/v1
+    model: mistral/mistral-large-4
+    api_key_env: BENCHLAB_KEY_MISTRALLARGE4
+    max_concurrency: 4
+    extra_params: {top_p: 1.0}

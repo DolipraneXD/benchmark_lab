@@ -92,6 +92,16 @@ def test_model_add_edit_delete_keeps_comments(client, models_yaml):
 
     r = client.post("/models/save", data={**form, "original_id": "newm", "name": "Renamed"})
     assert "Renamed" in models_yaml.read_text()
+    r = client.post(
+        "/models/save",
+        data={
+            **form,
+            "original_id": "newm",
+            "name": "Renamed",
+            "base_url": "http://h:1/v1/chat/completions",
+        },
+    )
+    assert "base_url: http://h:1/v1\n" in models_yaml.read_text() and "was removed" in r.text
     bad = client.post("/models/save", data={**form, "original_id": "newm", "base_url": ""})
     assert "needs base_url" in bad.text and "Renamed" in models_yaml.read_text()
 

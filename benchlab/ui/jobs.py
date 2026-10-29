@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from benchlab.containers import docker_env
 from benchlab.runs import RunDir, utc_stamp
 from benchlab.usage import UsageLog
 
@@ -84,7 +85,7 @@ def job_env() -> dict[str, str]:
     bin_dir = str(Path(sys.executable).parent)
     parts = env.get("PATH", "").split(os.pathsep)
     env["PATH"] = os.pathsep.join([bin_dir, *[p for p in parts if p and p != bin_dir]])
-    return env
+    return docker_env(env)
 
 
 def new_id() -> str:
@@ -139,7 +140,9 @@ def status(runs_dir: str | Path, job: Job) -> str:
 
 
 def _docker(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=20)
+    return subprocess.run(
+        ["docker", *args], capture_output=True, text=True, timeout=20, env=docker_env()
+    )
 
 
 def _container_running(names: list[str]) -> bool:

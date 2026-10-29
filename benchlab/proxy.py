@@ -9,7 +9,6 @@ share one OpenAI-compatible interface and one usage log.
 from __future__ import annotations
 
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -21,6 +20,7 @@ import httpx
 import yaml
 
 from benchlab.config import BenchConfig, ModelSpec
+from benchlab.harness_env import own_tool
 from benchlab.llm import endpoint_params
 
 CALLBACK = "benchlab.proxy_logger.benchlab_logger"
@@ -165,7 +165,7 @@ class ProxyProcess:
         }
 
     def start(self, timeout_s: float = 120.0) -> ProxyProcess:
-        exe = shutil.which("litellm")
+        exe = own_tool("litellm")
         if exe is None:
             raise RuntimeError("litellm proxy CLI not found; run `uv sync`")
         self.work_dir.mkdir(parents=True, exist_ok=True)
@@ -226,7 +226,7 @@ def _free_port() -> int:
 def launch_proxy(
     cfg: BenchConfig, config_path: Path, detach: bool = False
 ) -> subprocess.Popen | int:
-    exe = shutil.which("litellm")
+    exe = own_tool("litellm")
     if exe is None:
         print(
             "litellm proxy CLI not found. Run: uv sync",
