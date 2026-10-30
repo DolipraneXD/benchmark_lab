@@ -82,10 +82,16 @@ def build_proxy_config(
         "model_list": model_list,
         "litellm_settings": {
             "drop_params": True,
-            "num_retries": 2,
+            "num_retries": cfg.settings.request_retries,
             "request_timeout": cfg.settings.request_timeout_s,
             "callbacks": [CALLBACK],
             "turn_off_message_logging": True,  # usage only; prompts stay out of the proxy logs
+        },
+        # harness calls get the same patience as BenchLab's own: rate limits, "at capacity"
+        # and 5xx are retried with a growing wait instead of failing the task
+        "router_settings": {
+            "num_retries": cfg.settings.request_retries,
+            "retry_after": cfg.settings.retry_backoff_s,
         },
         "general_settings": {
             "master_key": "os.environ/LITELLM_MASTER_KEY",

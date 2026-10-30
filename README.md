@@ -16,8 +16,9 @@ Every score in the report is compared to a baseline model, chosen in `models.yam
 
 ## Setup
 
-You need Python 3.11+. Docker is only needed for benchmarks that run model-written code
-(see [What each benchmark needs](#what-each-benchmark-needs)).
+You need Python 3.11+. Docker is needed for benchmarks that run model-written code
+(see [What each benchmark needs](#what-each-benchmark-needs)), and to run every benchmark in
+its own container (see [Running in Docker](#running-in-docker)).
 
 ```bash
 uv sync                          # with uv
@@ -381,6 +382,64 @@ over `.env`.
 - Changes must come from the panel itself, so another website open in your browser can't
   start runs.
 
+## Running in Docker
+
+Every run can get a container of its own: the panel starts the same `benchlab run …` it
+would run on the host, in a container built for that benchmark's family, with CPU and
+memory limits. Results land in the same `workspace/` folders, so nothing else changes. The
+design is in `docs/superpowers/specs/2026-10-29-benchlab-docker-runs-design.md`.
+
+```bash
+docker/benchlab-compose --profile build build      # build the images (first time: ~1 hour)
+docker/benchlab-compose up -d                      # start the panel in a container
+docker/benchlab-compose logs panel                 # the link with the session key
+docker/benchlab-compose down                       # stop it (runs already started keep going)
+```
+
+`docker/benchlab-compose` fills in the project folder and your user, and uses the native
+Docker Engine (context `default`) even when your shell uses Docker Desktop, whose VM can
+run out of memory on a 16 GB machine. Set `BENCHLAB_DOCKER_CONTEXT` to use another engine.
+
+**Images**, one per family (`family` in `benchlab/registry.py`):
+
+| Image | Runs |
+|---|---|
+| `benchlab-core` | the panel; app tasks, GPQA, BFCL, TTFT, τ²-bench, GAIA, BrowseComp, Terminal-Bench, SWE-bench |
+| `benchlab-code` | LiveCodeBench, Aider, AutomationBench |
+| `benchlab-retrieval` | MTEB, BEIR, own retrieval (CPU PyTorch) |
+| `benchlab-serving` | the serving benchmark |
+| `benchlab-aider` | the containers Aider runs each exercise in |
+
+Each image holds its benchmarks' official tools, installed and pinned when it is built
+(`benchlab prepare --family …`). API keys never go into an image. Rebuild after changing
+BenchLab's code; downloads are cached, so a rebuild takes minutes.
+
+**How a run container is set up:**
+- the project's `data/`, configs and `workspace/` are mounted at the **same paths** as on the
+  host, so paths a benchmark hands to Docker are valid on the host;
+- it receives only the key variables its models and helper models need, by name;
+- it runs as your user, so the files it writes are yours;
+- limits come from `container_limits` in the config: per family (core 2 CPUs / 4 GB, code
+  and retrieval 4 CPUs / 8 GB), raised by a benchmark's own entry (LiveCodeBench: 14 GB,
+  since it unpacks every problem's tests in memory);
+- a job with benchmarks from several families runs one container after another. Stop reaches
+  whichever is running, and Resume continues.
+
+**Docker access.** The panel reaches Docker only through a socket proxy that can start,
+stop and inspect containers. Run containers get Docker access only for the benchmarks that
+start their own containers (Terminal-Bench, SWE-bench, GAIA, BrowseComp, Aider), through a
+second proxy. That is the one way a run can act on the host's Docker.
+
+Without compose, the panel on the host can also start runs in containers: set
+`executor: docker` in the config (or `BENCHLAB_EXECUTOR=docker`) and start the proxies with
+`docker/benchlab-compose up -d docker-panel docker-runs`.
+
+**Flaky providers.** Rate limits, "at capacity", 5xx errors and dropped connections are
+retried up to 4 times with growing waits (2, 4, 8, 16 s), for direct calls and for calls
+the benchmarks make through BenchLab's proxy (`request_retries`, `retry_backoff_s`). A bad
+key or a wrong answer is never retried. If one benchmark of a run crashes, the run reports
+it and carries on with the next.
+
 ## Tests
 
 The tests never call a real model and cost nothing. `tests/conftest.py` starts a small
@@ -415,6 +474,7 @@ What the test files cover:
 | `test_samples.py` | per-test detail from each harness's output (Inspect, τ², red team, AutomationBench) |
 | `test_providers.py` | every provider routes correctly; incomplete models are refused |
 | `test_planning.py` | cost and time estimates, typical then measured pace |
+| `test_containers.py` | the `docker run` a run becomes (limits, mounts, keys by name, Docker access), splitting a job by family, Stop reaching a later container |
 | `test_retrieval_adapter.py` | the retrieval pipeline |
 | `test_serving_adapters.py` | the TTFT probe and the serving benchmark |
 | `test_report.py` | the comparison, `report.html`, `tracker.json` and the results worth a second look |
@@ -433,7 +493,8 @@ expected.
 | τ²-bench | API access for the model and the user-simulator model |
 | GAIA | Docker and web access |
 | Terminal-Bench, SWE-bench | Docker, about 4 CPU and 16 GB RAM per parallel task, tens of GB of images |
-| Aider Polyglot, LiveCodeBench | Docker |
+| Aider Polyglot | Docker |
+| LiveCodeBench | about 14 GB of RAM: it unpacks every problem's hidden tests in memory |
 | Retrieval | embedding and rerank endpoints, or a GPU |
 | Serving | a self-hosted endpoint; `nvidia-smi` on the serving machine for GPU figures |
 
@@ -450,6 +511,7 @@ data/                            inputs kept in git
   retrieval/                     your own documents for the retrieval benchmark (not in git)
 tests/                           the test suite
 docs/                            design notes
+docker/                          Dockerfile, compose.yaml and the benchlab-compose launcher
 workspace/                       everything BenchLab makes on this machine (not in git):
   runs/, runs_xkiro/             one folder per run
   results/, results_xkiro/       results.csv, report.html, tracker.json
@@ -467,6 +529,7 @@ benchlab/cli.py                  the benchlab command
 benchlab/config.py               config validation
 benchlab/llm.py                  model access through LiteLLM: check, probes, budget
 benchlab/proxy.py                the LiteLLM proxy used by the harnesses
+benchlab/containers.py           runs as containers: the `docker run` for each run
 benchlab/providers.py            the API providers a model can use
 benchlab/registry.py             benchmark keys, stages and suites
 benchlab/bench_about.py          what each benchmark measures, with links

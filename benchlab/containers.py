@@ -99,6 +99,7 @@ def run_argv(
     env_names: list[str],
     needs_docker: bool,
     user: str | None = None,
+    benches: list[str] | None = None,
 ) -> list[str]:
     """``docker run`` for one ``benchlab <cli_args>`` in a container of ``family``."""
     root = root.resolve()
@@ -107,7 +108,7 @@ def run_argv(
     data = (root / paths.DATA).resolve()
     home = ws / ".home"
     home.mkdir(parents=True, exist_ok=True)
-    lim = cfg.settings.container_limits.get(family, {})
+    lim = limits_for(cfg, family, benches or [])
     argv = [
         "docker",
         "run",
@@ -152,6 +153,27 @@ def run_argv(
         argv += ["-e", n]  # value from the launcher's environment, never on the command line
     argv += [image(cfg, family), "benchlab", *cli_args]
     return argv
+
+
+def _gib(mem: str | int | float) -> float:
+    s = str(mem).strip().lower().rstrip("b")
+    unit = {"k": 1 / 1024**2, "m": 1 / 1024, "g": 1, "t": 1024}.get(s[-1:], None)
+    return float(s[:-1]) * unit if unit else float(s) / 1024**3
+
+
+def limits_for(cfg: BenchConfig, family: str, benches: list[str]) -> dict:
+    """The family's limits, raised by any benchmark of the container that has its own
+    entry (e.g. LiveCodeBench unpacks every problem's tests in memory)."""
+    lim = dict(cfg.settings.container_limits.get(family, {}))
+    for b in benches:
+        own = cfg.settings.container_limits.get(b) or {}
+        if own.get("cpus") and float(own["cpus"]) > float(lim.get("cpus") or 0):
+            lim["cpus"] = own["cpus"]
+        if own.get("memory") and (
+            not lim.get("memory") or _gib(own["memory"]) > _gib(lim["memory"])
+        ):
+            lim["memory"] = own["memory"]
+    return lim
 
 
 def host_user() -> str | None:

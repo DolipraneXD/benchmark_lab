@@ -41,7 +41,7 @@ TAU2_REPO = "https://github.com/sierra-research/tau2-bench"
 TAU2_SEED_DEFAULT = 300  # tau2's own default simulation seed
 SUBSET_SEED = 20261013  # benchlab's seed for picking the fixed task subset
 SMOKE_TASKS = 2
-SMOKE_MAX_STEPS = 20
+SMOKE_MAX_STEPS = 60  # a real conversation needs 20-40 messages; fewer always ends at max_steps
 BASE_SPLIT_SIZES = {
     "airline": 50,
     "retail": 114,

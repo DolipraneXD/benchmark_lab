@@ -144,3 +144,15 @@ def test_uv_is_found_in_benchlabs_own_environment(monkeypatch):
     lite = Path(sys.executable).parent / "litellm"  # the proxy CLI, same rule
     if lite.exists():
         assert harness_env.own_tool("litellm") == str(lite)
+
+
+def test_proxy_retries_like_direct_calls(models_yaml):
+    from benchlab.proxy import build_proxy_config
+
+    cfg = load_config(models_yaml)
+    data = build_proxy_config(cfg)
+    assert data["litellm_settings"]["num_retries"] == cfg.settings.request_retries
+    assert data["router_settings"] == {
+        "num_retries": cfg.settings.request_retries,
+        "retry_after": cfg.settings.retry_backoff_s,
+    }

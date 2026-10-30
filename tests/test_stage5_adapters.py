@@ -238,3 +238,16 @@ def test_lcb_parse(models_yaml, tmp_path):
     assert res.harness["window"] == ("2024-11-02", "2025-01-15")
     assert "window 2024-11-02..2025-01-15" in res.note and "cutoff 2024-10-01" in res.note
     assert res.tracker == {"mock__lcb": {"v": "40.0", "note": res.note}}
+
+
+def test_lcb_finds_its_prompt_files_from_the_run_folder(tmp_path):
+    from benchlab.adapters.livecodebench import link_package
+
+    repo = tmp_path / "repo"
+    (repo / "lcb_runner/prompts/few_shot_examples/generation").mkdir(parents=True)
+    (repo / "lcb_runner/prompts/few_shot_examples/generation/func.json").write_text("[]")
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    link_package(repo, raw)
+    link_package(repo, raw)  # idempotent on resume
+    assert (raw / "lcb_runner/prompts/few_shot_examples/generation/func.json").read_text() == "[]"

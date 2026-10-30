@@ -162,3 +162,22 @@ def test_docker_env_picks_benchlabs_engine_only_when_asked():
         {"BENCHLAB_DOCKER_CONTEXT": "default", "DOCKER_HOST": "tcp://p:2375"}
     )
     assert "DOCKER_CONTEXT" not in env  # an explicit DOCKER_HOST (the socket proxy) wins
+
+
+def test_a_benchmark_can_raise_its_containers_limits(models_yaml):
+    cfg = load_config(models_yaml)
+    assert containers.limits_for(cfg, "code", ["aider"]) == {"cpus": 4, "memory": "8g"}
+    assert containers.limits_for(cfg, "code", ["aider", "lcb"])["memory"] == "14g"
+    argv = _argv(cfg, models_yaml.parent, benches=("lcb",), family="code")
+    assert _flag(argv, "--memory") == ["8g"]  # _argv doesn't pass benches: family default
+    argv = containers.run_argv(
+        cfg,
+        name="n",
+        family="code",
+        cli_args=["run"],
+        root=models_yaml.parent,
+        env_names=[],
+        needs_docker=False,
+        benches=["lcb"],
+    )
+    assert _flag(argv, "--memory") == ["14g"]

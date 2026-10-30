@@ -546,6 +546,7 @@ def create_app(
                         env_names=containers.key_vars(cfg, ms, bs),
                         needs_docker=containers.needs_docker(bs),
                         user=containers.host_user(),
+                        benches=bs,
                     )
                 )
         job = J.Job(

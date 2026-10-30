@@ -231,6 +231,9 @@ class Settings(BaseModel):
             "code": {"cpus": 4, "memory": "8g"},
             "retrieval": {"cpus": 4, "memory": "8g"},
             "serving": {"cpus": 2, "memory": "4g"},
+            # a benchmark key raises its container's limits: LiveCodeBench unpacks the
+            # hidden tests of every problem in memory before picking its subset
+            "lcb": {"memory": "14g"},
         }
     )
     # under the workspace (BENCHLAB_WORKSPACE moves it, e.g. inside a run container)

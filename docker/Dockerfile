@@ -7,6 +7,8 @@
 #   retrieval  core + the MTEB / BEIR / own-data stack (PyTorch)
 #   serving    core + guidellm
 # PyTorch (retrieval, serving) is the CPU build: no GPU here, and CUDA adds ~5 GB.
+# Pythons uv downloads for a harness (AutomationBench needs 3.13) go to /opt/benchlab/python,
+# readable by the non-root user runs execute as (not /root, which is private).
 # Harnesses are installed at build time by each adapter's own prepare(), with the
 # versions pinned in BenchLab, into /opt/benchlab/harnesses. Keys never enter an image.
 #
@@ -23,7 +25,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     BENCHLAB_HARNESS_DIR=/opt/benchlab/harnesses \
     UV_LINK_MODE=copy \
     UV_CACHE_DIR=/var/cache/uv \
-    UV_TORCH_BACKEND=cpu
+    UV_TORCH_BACKEND=cpu \
+    UV_PYTHON_INSTALL_DIR=/opt/benchlab/python
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*

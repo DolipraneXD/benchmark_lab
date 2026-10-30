@@ -52,7 +52,7 @@ LCB_PACKAGES = [
     "annotated-types>=0.7.0",
     "anthropic>=0.42.0,<1",  # 1.x dropped HUMAN_PROMPT/AI_PROMPT which lcb_runner.prompts imports
     "cohere>=5.13.6",
-    "datasets>=3.2.0",
+    "datasets>=3.2.0,<4",  # 4.x dropped dataset loading scripts; LCB loads code_generation_lite.py
     "google-genai>=0.6.0",
     "mistralai==0.4.2",
     "openai>=1.59.6",
@@ -91,6 +91,15 @@ sys.argv = ["lcb_runner.runner.main"] + sys.argv[2:]
 from lcb_runner.runner.main import main
 main()
 """
+
+
+def link_package(repo: Path, raw: Path) -> None:
+    """LCB opens its few-shot prompt files by paths relative to the folder it is started in
+    (``lcb_runner/prompts/…``), and writes ``output/`` there. It runs in the run's raw folder
+    (the install may be read-only), so that folder gets a ``lcb_runner`` link to the package."""
+    link = raw / "lcb_runner"
+    if not link.exists():
+        link.symlink_to(repo / "lcb_runner", target_is_directory=True)
 
 
 class LCBAdapter(BenchAdapter):
@@ -228,6 +237,7 @@ class LCBAdapter(BenchAdapter):
     def run(self, model, run_dir, subset, trials, smoke, budget: BudgetGuard | None = None) -> Path:
         repo, bin_dir = self.harness()
         raw = run_dir.raw_dir
+        link_package(repo, raw)
         with ProxyProcess(self.cfg, raw, run_dir.path / RunDir.USAGE) as proxy:
             env = dict(os.environ)
             env.pop("VIRTUAL_ENV", None)

@@ -38,3 +38,23 @@ def test_proxy_config_cli(models_yaml, tmp_path):
     r = runner.invoke(app, ["proxy-config", "-c", str(models_yaml), "--out", str(out)])
     assert r.exit_code == 0, r.output
     assert out.exists() and "os.environ/MOCK_API_KEY" in out.read_text()
+
+
+def test_one_crashing_benchmark_does_not_stop_the_others(models_yaml, monkeypatch):
+    from benchlab.adapters.ttft import TTFTAdapter
+
+    calls = []
+
+    def boom(self):
+        calls.append("gpqa")
+        raise PermissionError("Permission denied: '/opt/x/python'")
+
+    monkeypatch.setattr("benchlab.adapters.inspect_bench.GPQAAdapter.prepare", boom)
+    orig = TTFTAdapter.prepare
+    monkeypatch.setattr(TTFTAdapter, "prepare", lambda self: (calls.append("ttft"), orig(self))[1])
+    r = runner.invoke(
+        app, ["run", "-m", "mock", "-b", "gpqa,ttft", "--smoke", "-c", str(models_yaml)]
+    )
+    assert r.exit_code == 1  # the failure is reported in the exit code
+    assert calls == ["gpqa", "ttft"]  # but TTFT still ran after GPQA crashed
+    assert "gpqa mock failed: PermissionError" in r.output and "continuing" in r.output

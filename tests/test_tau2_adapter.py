@@ -8,6 +8,7 @@ import pytest
 from benchlab.adapters.base import HarnessNotReady
 from benchlab.adapters.tau2 import (
     BASE_SPLIT_SIZES,
+    SMOKE_MAX_STEPS,
     SUBSET_SEED,
     Tau2Airline,
     Tau2Retail,
@@ -83,7 +84,11 @@ def test_command_routes_agent_and_fixed_user_sim_through_proxy(models_yaml, tmp_
     assert "--task-ids" in cmd and len(cmd) - cmd.index("--task-ids") - 1 == 20
     # smoke: 2 tasks, 1 trial, short conversations
     s2 = " ".join(a.build_command(cfg.get("mock"), Path("/x"), None, 3, True, "u", "k"))
-    assert "--num-trials 1" in s2 and "--max-steps 20" in s2 and s2.count(" --task-ids ") == 1
+    assert (
+        "--num-trials 1" in s2
+        and f"--max-steps {SMOKE_MAX_STEPS}" in s2
+        and s2.count(" --task-ids ") == 1
+    )
     assert len(s2.split("--task-ids ")[1].split()) == 2
     # user-sim params from settings override the model's own (tau2_user_model_params)
     cfg.settings.tau2_user_model_params = {"temperature": 0.7}

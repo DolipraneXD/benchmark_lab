@@ -305,7 +305,17 @@ def run(
                 f"[yellow]skip[/yellow] {m.id} x {b.key}: adapter not integrated yet ({b.notes or b.harness})"
             )
             continue
-        rc |= _run_one(cfg, m, b, adapter_cls, k, subset, smoke, budget_usd, resume)
+        try:
+            rc |= _run_one(cfg, m, b, adapter_cls, k, subset, smoke, budget_usd, resume)
+        except KeyboardInterrupt:
+            err.print("interrupted; progress is saved, re-run to resume")
+            raise typer.Exit(130) from None
+        except Exception as e:  # noqa: BLE001 - one broken bench must not stop the others
+            err.print(
+                f"[red]{b.key} {m.id} failed:[/red] {type(e).__name__}: {redact(e)}; "
+                "continuing with the next benchmark"
+            )
+            rc |= 1
     raise typer.Exit(rc)
 
 
