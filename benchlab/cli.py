@@ -12,7 +12,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from benchlab import __version__, registry
+from benchlab import __version__, cleanup, registry
 from benchlab.config import BenchConfig, load_config
 from benchlab.llm import litellm_model_name, per_model_exceptions, request_params
 from benchlab.planning import fmt_duration, plan_rows
@@ -305,6 +305,7 @@ def run(
                 f"[yellow]skip[/yellow] {m.id} x {b.key}: adapter not integrated yet ({b.notes or b.harness})"
             )
             continue
+        before = cleanup.snapshot() if b.needs_docker else None  # it starts containers
         try:
             rc |= _run_one(cfg, m, b, adapter_cls, k, subset, smoke, budget_usd, resume)
         except KeyboardInterrupt:
@@ -316,7 +317,24 @@ def run(
                 "continuing with the next benchmark"
             )
             rc |= 1
+        finally:
+            _clean_after(b.key, before)
     raise typer.Exit(rc)
+
+
+def _clean_after(bench: str, before: set[str] | None) -> None:
+    """Remove the containers this benchmark left behind (finished, failed or stopped)."""
+    if before is None:
+        return
+    try:
+        removed = cleanup.after_benchmark(before)
+    except Exception as e:  # noqa: BLE001 - cleanup must never hide the run's own result
+        err.print(f"[yellow]cleanup after {bench} failed:[/yellow] {redact(e)}")
+        return
+    if removed:
+        console.print(f"cleanup after {bench}: removed {removed.summary()}")
+    elif removed.skipped:
+        console.print(f"[yellow]cleanup after {bench} skipped:[/yellow] {removed.skipped}")
 
 
 def _run_one(cfg, m, b, adapter_cls, trials, subset, smoke, budget_usd, resume) -> int:
@@ -621,6 +639,26 @@ def prepare(
             failed += 1
             err.print(f"[red]not ready[/red] {b.key}: {redact(e)}")
     raise typer.Exit(1 if failed else 0)
+
+
+@app.command("cleanup")
+def cleanup_cmd(
+    dry_run: bool = typer.Option(False, "--dry-run", help="only list what would be removed"),
+) -> None:
+    """Remove containers benchmarks left behind (task environments, sandboxes, finished run
+    containers), with their networks and volumes. Only when no BenchLab run is active."""
+    targets, removed = cleanup.idle_cleanup(dry_run=dry_run)
+    if removed.skipped:
+        err.print(f"[yellow]{removed.skipped}[/yellow]")
+        raise typer.Exit(1)
+    if not targets:
+        console.print("nothing to clean up")
+        return
+    if dry_run:
+        for c in targets:
+            console.print(f"would remove {c.name} ({c.image})")
+        return
+    console.print(f"removed {removed.summary()}")
 
 
 @app.command()

@@ -434,6 +434,15 @@ Without compose, the panel on the host can also start runs in containers: set
 `executor: docker` in the config (or `BENCHLAB_EXECUTOR=docker`) and start the proxies with
 `docker/benchlab-compose up -d docker-panel docker-runs`.
 
+**Nothing left running.** Run containers remove themselves when they end (`--rm`). The
+benchmarks that start their own containers (Terminal-Bench, SWE-bench, GAIA, BrowseComp,
+Aider) are followed by a cleanup: containers that appeared during the benchmark and are
+recognisably a benchmark's own (Harbor task environments, Inspect sandboxes, Aider
+exercises) are removed with their networks and volumes, whether the benchmark finished,
+failed or was stopped. Your own containers, and BenchLab's panel and proxies, are never
+touched. While another BenchLab run is going, cleanup waits; `benchlab cleanup` (or
+`--dry-run` to only list) clears anything left once nothing is running.
+
 **Flaky providers.** Rate limits, "at capacity", 5xx errors and dropped connections are
 retried up to 4 times with growing waits (2, 4, 8, 16 s), for direct calls and for calls
 the benchmarks make through BenchLab's proxy (`request_retries`, `retry_backoff_s`). A bad
@@ -474,6 +483,7 @@ What the test files cover:
 | `test_samples.py` | per-test detail from each harness's output (Inspect, τ², red team, AutomationBench) |
 | `test_providers.py` | every provider routes correctly; incomplete models are refused |
 | `test_planning.py` | cost and time estimates, typical then measured pace |
+| `test_cleanup.py` | after a benchmark, only its own new containers (and their networks and volumes) are removed |
 | `test_containers.py` | the `docker run` a run becomes (limits, mounts, keys by name, Docker access), splitting a job by family, Stop reaching a later container |
 | `test_retrieval_adapter.py` | the retrieval pipeline |
 | `test_serving_adapters.py` | the TTFT probe and the serving benchmark |
@@ -530,6 +540,7 @@ benchlab/config.py               config validation
 benchlab/llm.py                  model access through LiteLLM: check, probes, budget
 benchlab/proxy.py                the LiteLLM proxy used by the harnesses
 benchlab/containers.py           runs as containers: the `docker run` for each run
+benchlab/cleanup.py              removes the containers a benchmark leaves behind
 benchlab/providers.py            the API providers a model can use
 benchlab/registry.py             benchmark keys, stages and suites
 benchlab/bench_about.py          what each benchmark measures, with links
