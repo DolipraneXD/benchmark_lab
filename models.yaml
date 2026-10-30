@@ -51,3 +51,5 @@ models:
     api_key_env: BENCHLAB_KEY_MISTRALLARGE4
     max_concurrency: 4
     extra_params: {top_p: 1.0}
+    price_in_per_mtok: 0.7
+    price_out_per_mtok: 2.1
