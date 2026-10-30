@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import json
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 from benchlab.redact import redact
@@ -20,7 +21,9 @@ from benchlab.runs import RunDir
 
 MAX_TEXT = 6000  # characters kept per field / message, so pages stay fast
 CACHE = "samples.json"
+CACHE_VERSION = 2  # bump when an extractor changes, so cached runs are read again
 INSPECT = ("gpqa", "bfcl", "gaia", "bcomp")
+TASK_MARK, SCREEN_MARK = "Task Description:", "Current terminal state:"  # Terminus prompt
 
 
 @dataclass
@@ -184,6 +187,96 @@ def _tau2(rd: RunDir) -> list[Sample] | None:
     return out
 
 
+def _harbor_conversation(trial: Path) -> tuple[str, str, str, list[dict[str, Any]]]:
+    """(agent instructions, task, final answer, conversation) from the agent's trajectory."""
+    p = trial / "agent" / "trajectory.json"
+    if not p.exists():
+        return "", "", "", []
+    steps = json.loads(p.read_text()).get("steps") or []
+    system = prompt = response = ""
+    conv = []
+    for i, st in enumerate(steps):
+        text = st.get("message") or ""
+        if st.get("source") == "user":
+            if i == 0 and TASK_MARK in text:  # Terminus puts its instructions and the task in one
+                head, _, task = text.partition(TASK_MARK)
+                system, prompt = head.strip(), task.split(SCREEN_MARK, 1)[0].strip()
+                conv.append(_msg("user", prompt))
+            else:
+                conv.append(_msg("user", text))
+            continue
+        calls = []
+        for c in st.get("tool_calls") or []:
+            args = c.get("arguments") or {}  # shell commands: show just the keystrokes
+            calls.append(
+                {"name": c.get("function_name"), "arguments": args.get("keystrokes") or args}
+            )
+        conv.append(_msg("assistant", text, calls))
+        if text:
+            response = text
+        seen = [r.get("content") for r in (st.get("observation") or {}).get("results") or []]
+        if any(seen):
+            conv.append(_msg("tool", "\n".join(str(x) for x in seen if x)))
+    return _text(system), _text(prompt), _text(response), conv
+
+
+def _test_failures(stdout: str) -> str:
+    """The FAIL / ERROR blocks of a unittest or pytest log, else its last lines."""
+    lines = stdout.splitlines()
+    blocks, keep = [], False
+    for ln in lines:
+        if ln.startswith(("FAIL:", "ERROR:", "_____")):  # unittest / pytest failure headers
+            keep = True
+        elif ln.startswith(("Ran ", "=====")):
+            keep = False
+        if keep:
+            blocks.append(ln)
+    return "\n".join(blocks) if blocks else "\n".join(lines[-40:])
+
+
+def _harbor_verdict(trial: Path, failed: bool) -> tuple[str, str]:
+    """(what had to pass, why it passed or failed) from the verifier's own reports."""
+    v = trial / "verifier"
+    expected, reason = [], []
+    report = v / "report.json"
+    if report.exists():  # SWE-bench: tests the fix must make pass, and must keep passing
+        r = next(iter(json.loads(report.read_text()).values()), {})
+        ts = r.get("tests_status") or {}
+        f2p, p2p = ts.get("FAIL_TO_PASS") or {}, ts.get("PASS_TO_PASS") or {}
+        must = (f2p.get("success") or []) + (f2p.get("failure") or [])
+        keep = (p2p.get("success") or []) + (p2p.get("failure") or [])
+        expected.append("Tests the fix must make pass:\n" + "\n".join(f"- {t}" for t in must))
+        if keep:
+            expected.append(f"and {len(keep)} test(s) that already passed must keep passing.")
+        if not r.get("patch_exists"):
+            reason.append("The agent changed nothing, so there was no fix to test.")
+        elif not r.get("patch_successfully_applied"):
+            reason.append("The agent's changes could not be applied to the repository.")
+        else:
+            reason.append(
+                f"Tests the fix had to make pass: {len(f2p.get('success') or [])} of {len(must)} pass."
+            )
+            reason += [f"  still failing: {t}" for t in f2p.get("failure") or []]
+            reason.append(
+                f"Tests that already passed: {len(p2p.get('success') or [])} of {len(keep)} still pass."
+            )
+            reason += [f"  now broken: {t}" for t in p2p.get("failure") or []]
+    ctrf = v / "ctrf.json"
+    if ctrf.exists():  # Terminal-Bench: pytest results of the task's checks
+        tests = (json.loads(ctrf.read_text()).get("results") or {}).get("tests") or []
+        expected.append("Checks that must pass:\n" + "\n".join(f"- {t.get('name')}" for t in tests))
+        passed = sum(1 for t in tests if t.get("status") == "passed")
+        reason.append(f"Checks passed: {passed} of {len(tests)}.")
+        for t in tests:
+            if t.get("status") != "passed":
+                msg = (t.get("message") or t.get("trace") or "").strip()
+                reason.append(f"  {t.get('status')}: {t.get('name')}" + (f"\n{msg}" if msg else ""))
+    out = v / "test-stdout.txt"
+    if failed and out.exists():
+        reason.append("\nTest output:\n" + _test_failures(out.read_text(errors="replace")))
+    return _text("\n".join(expected)), _text("\n".join(reason))
+
+
 def _harbor(rd: RunDir) -> list[Sample] | None:
     files = sorted((rd.path / "raw").glob("**/result.json"))
     trials = []
@@ -193,11 +286,11 @@ def _harbor(rd: RunDir) -> list[Sample] | None:
         except (OSError, json.JSONDecodeError):
             continue
         if "task_name" in d:
-            trials.append(d)
+            trials.append((p.parent, d))
     if not trials:
         return None
     out = []
-    for t in trials:
+    for trial, t in trials:
         rewards = (t.get("verifier_result") or {}).get("rewards") or {}
         reward = rewards.get("reward", next(iter(rewards.values()), None)) if rewards else None
         exc = t.get("exception_info") or {}
@@ -206,16 +299,25 @@ def _harbor(rd: RunDir) -> list[Sample] | None:
             if exc and reward is None
             else ("pass" if reward and float(reward) >= 1 else "fail")
         )
-        reason = ""
+        system, prompt, response, conv = _harbor_conversation(trial)
+        name = str(t.get("task_name"))
+        repo = name.split("__")[0] if "__" in name else ""  # SWE-bench ids: <repo>__<repo>-<n>
+        expected, reason = _harbor_verdict(trial, failed=status != "pass")
         if exc:
-            reason = f"{exc.get('exception_type', '')}: {exc.get('exception_message', '')}"
+            why = f"{exc.get('exception_type', '')}: {exc.get('exception_message', '')}"
+            reason = why + ("\n\n" + reason if reason else "")
         out.append(
             Sample(
-                id=str(t.get("task_name")),
+                id=name,
                 status=status,
                 score=None if reward is None else float(reward),
-                prompt=_text(t.get("instruction") or ""),
+                category=repo,
+                system=system,
+                prompt=prompt or _text(t.get("instruction") or ""),
+                response=response,
+                expected=expected,
                 reason=_text(reason),
+                messages=conv,
             )
         )
     return out
@@ -376,7 +478,9 @@ def load(rd: RunDir) -> dict[str, Any]:
     res_path = rd.path / RunDir.RESULT
     if cache.exists() and res_path.exists() and cache.stat().st_mtime >= res_path.stat().st_mtime:
         try:
-            return json.loads(cache.read_text())
+            cached = json.loads(cache.read_text())
+            if cached.get("version") == CACHE_VERSION:
+                return cached
         except json.JSONDecodeError:
             pass
     result = rd.read_result() if res_path.exists() else {}
@@ -389,6 +493,7 @@ def load(rd: RunDir) -> dict[str, Any]:
             c = cats.setdefault(s.category, {"pass": 0, "fail": 0, "error": 0})
             c[s.status] = c.get(s.status, 0) + 1
     data = {
+        "version": CACHE_VERSION,
         "source": source,
         "counts": counts,
         "categories": dict(sorted(cats.items())),
